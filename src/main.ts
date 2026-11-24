@@ -1,10 +1,10 @@
 import { syncLoops } from "./anim";
 import {
-  anchoredPosition,
   floatRange,
   nextRelocationDelayMs,
   nextZone,
   type Offset,
+  stagePosition,
   type ZoneState,
   zoneTarget,
 } from "./burnin";
@@ -45,8 +45,6 @@ const RETRY_MS = 60_000;
 /** Theme switch: the old content fades out for this long, then the new one blur-fades in (CSS .is-entering). */
 const LEAVE_MS = 250;
 const ENTER_MS = 500;
-/** The block drifts this far either side of its zone anchor (a small, slow, always-on movement). */
-const DRIFT_PX = 60;
 
 function byId(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -88,7 +86,7 @@ prefs = { ...prefs, themeIndex: themeIndex(launch.theme, themes[prefs.themeIndex
 
 let forecast: Forecast | null = null;
 let stale = false;
-/** Where in the float range the block sits, as a fraction of each axis, so a theme of another size keeps its zone. */
+/** Where in the free range the block sits, as a fraction of each axis, so a theme of another size keeps its zone. */
 let anchorFrac: Offset | null = null;
 let zones: ZoneState = { bag: [], last: null };
 let relocateTimer: ReturnType<typeof setTimeout> | undefined;
@@ -127,32 +125,16 @@ const meteors = startMeteors(meteorsLayer, () => fancy.meteors && !reducedMotion
 startShimmer(content, () => fancy.shimmer && !reducedMotion() && !freeze.frozen);
 
 /**
- * Burn-in protection: the stage sits at a zone anchor (see relocate) plus a slow drift around it, so it is
- * always moving. Called every second and after each render (themes differ in size, so measure every time);
- * the CSS transition turns the 1 s steps into continuous motion. `jump` skips that glide.
+ * Burn-in protection: the stage sits still at a zone anchor (see relocate), on whole pixels. Called at start,
+ * after every render (themes differ in size, so the range is measured again) and on each relocation jump. There
+ * is no transition on #stage: it only ever changes position while #fade is invisible.
  */
-function float(jump = false): void {
-  const { floatSpeedPxPerS: speed, floatMarginPx: margin } = config;
+function placeStage(): void {
   const range = currentRange();
-  if (anchorFrac === null) {
-    // First placement: pick a zone and jump straight there instead of gliding in from the corner.
-    pickAnchor(range);
-    jump = true;
-  }
+  if (anchorFrac === null) pickAnchor(range);
   if (freeze.frozen) anchorFrac = { x: 0, y: 0 };
-  const frac = anchorFrac ?? { x: 0, y: 0 };
-  const anchor = { x: Math.round(frac.x * range.x), y: Math.round(frac.y * range.y) };
-  // Frozen: the zone-0 anchor with zero drift.
-  const { x, y } = freeze.frozen ? { x: 0, y: 0 } : anchoredPosition(anchor, range, Date.now(), DRIFT_PX, speed);
-  const transform = `translate(${margin + x}px, ${margin + y}px)`;
-  if (!jump) {
-    stage.style.transform = transform;
-    return;
-  }
-  stage.style.transition = "none";
-  stage.style.transform = transform;
-  void stage.offsetWidth;
-  stage.style.transition = "";
+  const { x, y } = stagePosition(anchorFrac ?? { x: 0, y: 0 }, range, config.floatMarginPx);
+  stage.style.transform = `translate(${x}px, ${y}px)`;
 }
 
 /** Next zone from the shuffled bag, and a random point in it. */
@@ -181,7 +163,7 @@ function relocate(): void {
   clearTimeout(relocateJumpTimer);
   const move = () => {
     pickAnchor(currentRange());
-    float(true);
+    placeStage();
   };
   if (reducedMotion()) {
     move();
@@ -216,7 +198,7 @@ function scheduleRelocation(): void {
   );
 }
 
-/** The ambient tint lives on a fixed full-screen layer so it does not float with the content. */
+/** The ambient tint lives on a fixed full-screen layer so it does not move with the content. */
 function syncBackdrop(): void {
   const tinted = content.querySelector<HTMLElement>("[data-kind][data-daypart]");
   if (tinted) {
@@ -279,11 +261,11 @@ function render(force = false): void {
   document.documentElement.style.setProperty("--dim", String(prefs.brightness));
   syncBackdrop();
   syncEffects();
-  float();
+  placeStage();
 }
 
 /**
- * Theme changed: fade the old content out, draw the new one (float() measures it inside render, after it is
+ * Theme changed: fade the old content out, draw the new one (placeStage() measures it inside render, after it is
  * in), fade it in. Reduced motion skips straight to the new theme.
  */
 function switchTheme(): void {
@@ -410,6 +392,5 @@ if (isDevMode(location)) {
 }
 
 tickMinute();
-setInterval(() => float(), 1000);
 scheduleRelocation();
 void refreshForecast();

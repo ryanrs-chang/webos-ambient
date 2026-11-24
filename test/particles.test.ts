@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   advanceFlash,
   BLACK_THEME_INTENSITY,
+  CLOUD_VARIANTS,
   clampDt,
   createFlash,
   createScene,
@@ -10,10 +11,12 @@ import {
   FLASH_MAX_MS,
   FLASH_MIN_MS,
   FLASH_PEAK,
+  FOG_VARIANTS,
   flashLevel,
   MAX_ALPHA,
   MAX_DT_MS,
   MAX_PARTICLES,
+  STREAK_WIDTH,
   stepScene,
 } from "../src/effects/particles";
 import type { WeatherKind } from "../src/weather";
@@ -194,17 +197,17 @@ describe("stars", () => {
 describe("alpha limits", () => {
   test("alpha stays within each kind's maximum (and at least 0)", () => {
     const limits: [WeatherKind, "day" | "night", number][] = [
-      ["rain", "night", 0.25],
-      ["storm", "night", 0.25],
-      ["snow", "day", 0.35],
-      ["clear", "night", 0.5],
-      ["clear", "day", 0.06],
-      ["partly", "day", 0.07],
-      ["cloudy", "day", 0.07],
-      ["fog", "day", 0.1],
+      ["rain", "night", 0.45],
+      ["storm", "night", 0.45],
+      ["snow", "day", 0.55],
+      ["clear", "night", 0.7],
+      ["clear", "day", 0.12],
+      ["partly", "day", 0.15],
+      ["cloudy", "day", 0.15],
+      ["fog", "day", 0.2],
     ];
     for (const [kind, daypart, max] of limits) {
-      expect(MAX_ALPHA(kind, daypart)).toBeLessThanOrEqual(max);
+      expect(MAX_ALPHA(kind, daypart)).toBe(max);
       const rng = mulberry32(17);
       const scene = createScene(kind, daypart, SIZE, rng);
       for (let i = 0; i < 3000; i++) {
@@ -214,6 +217,14 @@ describe("alpha limits", () => {
           expect(p.alpha).toBeLessThanOrEqual(max);
         }
       }
+    }
+  });
+
+  test("the brightest particle of a kind gets close to its cap, so the scene is actually visible", () => {
+    for (const kind of ["rain", "snow"] as const) {
+      const scene = createScene(kind, "night", SIZE, mulberry32(6));
+      const top = Math.max(...scene.particles.map((p) => p.alpha));
+      expect(top).toBeGreaterThan(MAX_ALPHA(kind, "night") * 0.8);
     }
   });
 });
@@ -227,7 +238,7 @@ describe("storm flash", () => {
     }
   });
 
-  test("flashes start 20-60 s apart, peak at most 8% and last about 300 ms", () => {
+  test("flashes start 20-60 s apart, peak at most 12% and last about 300 ms", () => {
     const rng = mulberry32(99);
     let flash = createFlash(rng);
     const STEP = 10;
@@ -257,9 +268,9 @@ describe("storm flash", () => {
       expect(gap).toBeLessThanOrEqual(FLASH_MAX_MS + STEP);
     }
     expect(starts[0]).toBeGreaterThanOrEqual(FLASH_MIN_MS - STEP);
-    expect(peak).toBeLessThanOrEqual(0.08);
-    expect(peak).toBeGreaterThan(0.06);
-    expect(FLASH_PEAK).toBeLessThanOrEqual(0.08);
+    expect(peak).toBeLessThanOrEqual(0.12);
+    expect(peak).toBeGreaterThan(0.08);
+    expect(FLASH_PEAK).toBeLessThanOrEqual(0.12);
     expect(FLASH_DURATION_MS).toBe(300);
     const perFlash = litMs / litRuns;
     expect(perFlash).toBeGreaterThanOrEqual(FLASH_DURATION_MS - 2 * STEP);
@@ -273,7 +284,7 @@ describe("storm flash", () => {
     for (let i = 0; i < 60_000 / 33; i++) {
       stepScene(scene, 33, rng);
       expect(scene.flashLevel).toBeGreaterThanOrEqual(0);
-      expect(scene.flashLevel).toBeLessThanOrEqual(0.08);
+      expect(scene.flashLevel).toBeLessThanOrEqual(0.12);
       if (scene.flashLevel > 0) seenLit = true;
     }
     expect(seenLit).toBe(true);
@@ -318,7 +329,7 @@ describe("partly cloudy differs from cloudy", () => {
   });
 
   test("caps respected over time and every shape keeps its own alpha limit", () => {
-    const limit = { ray: 0.06, blob: 0.07, star: 0.5 } as const;
+    const limit = { ray: 0.12, blob: 0.15, star: 0.7 } as const;
     for (const daypart of DAYPARTS) {
       const rng = mulberry32(31);
       const scene = createScene("partly", daypart, SIZE, rng);
@@ -407,9 +418,130 @@ describe("intensity", () => {
     expect(max).toBeLessThanOrEqual(FLASH_PEAK * 0.6 + 1e-12);
   });
 
-  test("black themes run at 60%, ambient at 100%", () => {
-    expect(BLACK_THEME_INTENSITY).toBe(0.6);
+  test("black themes run as bright as ambient (the TV showed 60% as invisible)", () => {
+    expect(BLACK_THEME_INTENSITY).toBe(1);
     expect(effectIntensity("ambient")).toBe(1);
-    for (const id of ["minimal", "forecast", "analog"]) expect(effectIntensity(id)).toBe(0.6);
+    for (const id of ["minimal", "forecast", "analog"]) expect(effectIntensity(id)).toBe(BLACK_THEME_INTENSITY);
+  });
+});
+
+describe("rain streaks", () => {
+  test("are 1.5 px wide and at least 22 px long so they read from 3 m", () => {
+    expect(STREAK_WIDTH).toBe(1.5);
+    for (const kind of ["rain", "storm"] as const) {
+      const scene = createScene(kind, "night", SIZE, mulberry32(2));
+      for (const p of scene.particles) {
+        expect(p.size).toBeGreaterThanOrEqual(22);
+        expect(p.size).toBeLessThanOrEqual(52);
+      }
+    }
+  });
+});
+
+describe("cloud shapes", () => {
+  const blobs = (scene: ReturnType<typeof createScene>) => scene.particles.filter((p) => p.shape === "blob");
+
+  test("every cloud variant is 3-5 overlapping, wide, flat ellipses with a flat bottom", () => {
+    expect(CLOUD_VARIANTS.length).toBeGreaterThanOrEqual(3);
+    for (const v of CLOUD_VARIANTS) {
+      expect(v.puffs.length).toBeGreaterThanOrEqual(3);
+      expect(v.puffs.length).toBeLessThanOrEqual(5);
+      expect(v.w / v.h).toBeGreaterThanOrEqual(2);
+      const bottoms = v.puffs.map((q) => q.y + q.ry);
+      expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(v.h * 0.12);
+      for (const q of v.puffs) {
+        expect(q.rx / q.ry).toBeGreaterThanOrEqual(2.5);
+        expect(q.rx / q.ry).toBeLessThanOrEqual(4);
+        expect(q.x - q.rx).toBeGreaterThanOrEqual(0);
+        expect(q.x + q.rx).toBeLessThanOrEqual(v.w);
+        expect(q.y - q.ry).toBeGreaterThanOrEqual(0);
+        expect(q.y + q.ry).toBeLessThanOrEqual(v.h);
+      }
+      // Overlapping: puffs sorted by x each reach into the next one.
+      const sorted = [...v.puffs].sort((a, b) => a.x - b.x);
+      for (let i = 1; i < sorted.length; i++) {
+        expect(sorted[i].x - sorted[i - 1].x).toBeLessThan(sorted[i].rx + sorted[i - 1].rx);
+      }
+    }
+  });
+
+  test("fog variants are flatter bands than clouds", () => {
+    expect(FOG_VARIANTS.length).toBeGreaterThanOrEqual(2);
+    for (const v of FOG_VARIANTS) {
+      expect(v.puffs.length).toBeGreaterThanOrEqual(3);
+      expect(v.puffs.length).toBeLessThanOrEqual(5);
+      expect(v.w / v.h).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  test("cloud particles are wide (aspect >= 2), fog bigger and flatter", () => {
+    for (const kind of ["cloudy", "partly", "fog"] as const) {
+      for (let seed = 1; seed <= 10; seed++) {
+        const scene = createScene(kind, "day", SIZE, mulberry32(seed));
+        expect(blobs(scene).length).toBeGreaterThan(0);
+        for (const p of blobs(scene)) {
+          expect(p.aspect).toBeGreaterThanOrEqual(kind === "fog" ? 4 : 2);
+          const variants = kind === "fog" ? FOG_VARIANTS : CLOUD_VARIANTS;
+          expect(p.variant).toBeGreaterThanOrEqual(0);
+          expect(p.variant).toBeLessThan(variants.length);
+        }
+      }
+    }
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const sizes = (kind: "cloudy" | "fog") => blobs(createScene(kind, "day", SIZE, mulberry32(3))).map((p) => p.size);
+    expect(mean(sizes("fog"))).toBeGreaterThan(mean(sizes("cloudy")));
+  });
+
+  test("clouds drift horizontally and bob a little vertically, never standing still", () => {
+    for (const kind of ["cloudy", "partly", "fog"] as const) {
+      const rng = mulberry32(12);
+      const scene = createScene(kind, "day", SIZE, rng);
+      const cloud = blobs(scene);
+      const ys = cloud.map(() => new Set<number>());
+      const xs = cloud.map((p) => p.x);
+      for (let i = 0; i < 600; i++) {
+        stepScene(scene, 100, rng);
+        cloud.forEach((p, j) => {
+          ys[j].add(Math.round(p.y));
+          expect(Math.abs(p.y - p.baseY)).toBeLessThanOrEqual(p.bob + 1e-9);
+          expect(p.bob).toBeLessThanOrEqual(16);
+        });
+      }
+      cloud.forEach((p, j) => {
+        expect(ys[j].size).toBeGreaterThan(3);
+        expect(p.x).not.toBe(xs[j]);
+      });
+    }
+  });
+
+  test("clouds wrap around sideways and stay in bounds over a long run", () => {
+    const rng = mulberry32(19);
+    const scene = createScene("cloudy", "day", SIZE, rng);
+    let wrapped = false;
+    const prev = scene.particles.map((p) => p.x);
+    for (let i = 0; i < 20_000; i++) {
+      stepScene(scene, 100, rng);
+      scene.particles.forEach((p, j) => {
+        expect(p.x).toBeGreaterThanOrEqual(-p.size - 1);
+        expect(p.x).toBeLessThanOrEqual(SIZE.w + p.size + 1);
+        if (Math.abs(p.x - prev[j]) > SIZE.w / 2) wrapped = true;
+        prev[j] = p.x;
+      });
+    }
+    expect(wrapped).toBe(true);
+  });
+
+  test("cloud alpha stays within cap * intensity", () => {
+    for (const intensity of [1, 0.5]) {
+      for (const kind of ["cloudy", "partly", "fog"] as const) {
+        const rng = mulberry32(5);
+        const scene = createScene(kind, "night", SIZE, rng, intensity);
+        const cap = (kind === "fog" ? 0.2 : 0.15) * intensity + 1e-12;
+        for (let i = 0; i < 500; i++) {
+          stepScene(scene, 100, rng);
+          for (const p of blobs(scene)) expect(p.alpha).toBeLessThanOrEqual(cap);
+        }
+      }
+    }
   });
 });

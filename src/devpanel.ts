@@ -247,7 +247,7 @@ function writeCollapsed(storage: DevPanelOptions["storage"], collapsed: boolean)
   }
 }
 
-/** Builds the panel and appends it to <body>, outside #stage so float / relocation measurement ignores it. */
+/** Builds the panel and appends it to <body>, outside #stage so placement / relocation measurement ignores it. */
 export function mountDevPanel(opts: DevPanelOptions): DevPanel {
   document.body.classList.add("dev");
 

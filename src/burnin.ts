@@ -1,7 +1,7 @@
-// OLED burn-in protection. Nothing a theme draws may stay on the same pixels
-// for hours: the content block floats continuously across all free screen
-// space, bouncing off the edges like a screensaver, so the panel never holds a
-// static image.
+// OLED burn-in protection. Nothing a theme draws may stay on the same pixels for hours, so every few minutes
+// the content block fades out and reappears in another region of the screen. Between relocations it sits still
+// on a whole-pixel position: a continuous drift left the text mid-transition at sub-pixel offsets, which looked
+// blurry on the TV.
 
 export interface Offset {
   x: number;
@@ -13,27 +13,7 @@ export interface Size {
   h: number;
 }
 
-/** y moves at this fraction of x's speed so the path does not close into a short loop. */
-const Y_SPEED_RATIO = 0.73;
-
-/** Triangle wave: position after travelling `distance` px back and forth inside [0, range]. */
-function bounce(distance: number, range: number): number {
-  if (range <= 0) return 0;
-  const m = distance % (2 * range);
-  // Math.floor keeps the result inside [0, range] even for a float that lands on the edge.
-  return Math.floor(m <= range ? m : 2 * range - m);
-}
-
-/**
- * Position at time `t` on a bouncing path inside [0, rangeX] x [0, rangeY].
- * x moves at `speedPxPerS`, y at 0.73 of it; each reflects at its edges.
- */
-export function floatPosition(tMs: number, rangeX: number, rangeY: number, speedPxPerS: number): Offset {
-  const d = (speedPxPerS * tMs) / 1000;
-  return { x: bounce(d, rangeX), y: bounce(d * Y_SPEED_RATIO, rangeY) };
-}
-
-/** Free travel per axis once the content and a margin on every side are accounted for. */
+/** Free room per axis once the content and a margin on every side are accounted for. */
 export function floatRange(viewport: Size, content: Size, margin: number): Offset {
   return {
     x: Math.max(0, viewport.w - content.w - 2 * margin),
@@ -41,9 +21,8 @@ export function floatRange(viewport: Size, content: Size, margin: number): Offse
   };
 }
 
-// Zone relocation. Floating alone only ever covers a strip around where the content started, so every few
-// minutes the block fades out and reappears in a different region. The 3x3 grid is dealt like a shuffled deck
-// (a "bag"), so over nine relocations every region is visited exactly once.
+// Zone relocation. Every few minutes the block fades out and reappears in a different region. The 3x3 grid is
+// dealt like a shuffled deck (a "bag"), so over nine relocations every region is visited exactly once.
 
 export type Rng = () => number;
 
@@ -98,20 +77,15 @@ export function zoneTarget(zone: Zone, range: Offset, rng: Rng): Offset {
 }
 
 /**
- * The block's offset inside the float range: the zone anchor plus a slow drift of up to `drift` px either
- * side of it (the same bounce as floatPosition, in a small box), clamped into [0, range] so it is always
- * moving yet never leaves the free space.
+ * Where #stage's top-left goes, in whole px: the margin plus the anchor (a fraction of each axis of `range`),
+ * rounded and clamped into [0, range]. Always integers, so the text is never rasterised at a sub-pixel offset.
  */
-export function anchoredPosition(
-  anchor: Offset,
-  range: Offset,
-  tMs: number,
-  drift: number,
-  speedPxPerS: number,
-): Offset {
-  const d = floatPosition(tMs, 2 * drift, 2 * drift, speedPxPerS);
-  const clamp = (v: number, max: number) => Math.max(0, Math.min(Math.max(0, max), v));
-  return { x: clamp(anchor.x + d.x - drift, range.x), y: clamp(anchor.y + d.y - drift, range.y) };
+export function stagePosition(anchorFrac: Offset, range: Offset, margin: number): Offset {
+  const axis = (frac: number, extent: number): number => {
+    const max = Math.max(0, Math.round(extent));
+    return Math.round(margin) + Math.max(0, Math.min(max, Math.round(frac * extent)));
+  };
+  return { x: axis(anchorFrac.x, range.x), y: axis(anchorFrac.y, range.y) };
 }
 
 /**

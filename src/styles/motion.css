@@ -361,7 +361,7 @@ html.no-orbit .wx-orbit {
   }
 }
 
-/* Reduced motion switches all of the above off. The stage float is burn-in protection and stays.
+/* Reduced motion switches all of the above off. The zone relocation is burn-in protection and stays.
    Every selector is scoped with html:not(.force-motion) so the dev panel can switch it off (test/style.test.ts). */
 
 @media (prefers-reduced-motion: reduce) {

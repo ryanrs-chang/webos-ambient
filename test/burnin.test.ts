@@ -1,89 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
-  anchoredPosition,
-  floatPosition,
   floatRange,
   nextRelocationDelayMs,
   nextZone,
+  stagePosition,
   type Zone,
   type ZoneState,
   zoneBag,
   zoneTarget,
 } from "../src/burnin";
-
-describe("floatPosition", () => {
-  const RX = 700;
-  const RY = 300;
-  const SPEED = 3;
-
-  test("always inside the range, including huge t", () => {
-    const times = [0, 1, 999, 1_700_000_000_000, 4e15, ...Array.from({ length: 5000 }, (_, i) => i * 7_919)];
-    for (const t of times) {
-      const { x, y } = floatPosition(t, RX, RY, SPEED);
-      expect(x).toBeGreaterThanOrEqual(0);
-      expect(x).toBeLessThanOrEqual(RX);
-      expect(y).toBeGreaterThanOrEqual(0);
-      expect(y).toBeLessThanOrEqual(RY);
-    }
-  });
-
-  test("whole pixels only", () => {
-    for (let i = 0; i < 2000; i++) {
-      const { x, y } = floatPosition(i * 3_001 + 17, RX, RY, SPEED);
-      expect(Number.isInteger(x)).toBe(true);
-      expect(Number.isInteger(y)).toBe(true);
-    }
-  });
-
-  test("moves every second at the given speed", () => {
-    // Far from both edges: x is 30 px at 10 s and 33 px at 11 s.
-    expect(floatPosition(10_000, RX, RY, SPEED).x).toBe(30);
-    expect(floatPosition(11_000, RX, RY, SPEED).x).toBe(33);
-    // y runs at 0.73 of the speed (2.19 px/s), so whole-pixel steps are 2 or 3.
-    const dy = floatPosition(11_000, RX, RY, SPEED).y - floatPosition(10_000, RX, RY, SPEED).y;
-    expect([2, 3]).toContain(dy);
-  });
-
-  test("starts at the origin at t=0", () => {
-    expect(floatPosition(0, RX, RY, SPEED)).toEqual({ x: 0, y: 0 });
-  });
-
-  test("reflects at the far edge and comes back", () => {
-    // Range 100 at 10 px/s: reaches 100 at 10 s, then returns.
-    expect(floatPosition(10_000, 100, 100, 10).x).toBe(100);
-    expect(floatPosition(11_000, 100, 100, 10).x).toBe(90);
-    expect(floatPosition(15_000, 100, 100, 10).x).toBe(50);
-    // Back at the near edge after a full there-and-back (20 s), then outward again.
-    expect(floatPosition(20_000, 100, 100, 10).x).toBe(0);
-    expect(floatPosition(21_000, 100, 100, 10).x).toBe(10);
-  });
-
-  test("x and y do not repeat in step: different effective speeds", () => {
-    // With equal ranges and speeds, a pure diagonal would keep x === y forever.
-    const diverged = Array.from({ length: 200 }, (_, i) => floatPosition(i * 1_000, 400, 400, 5)).some(
-      (p) => p.x !== p.y,
-    );
-    expect(diverged).toBe(true);
-    // And it is not a short loop: the position after 10 minutes differs from the start.
-    expect(floatPosition(600_000, 400, 400, 5)).not.toEqual(floatPosition(0, 400, 400, 5));
-  });
-
-  test("a zero range keeps that axis at 0", () => {
-    for (const t of [0, 5_000, 123_456_789]) {
-      expect(floatPosition(t, 0, RY, SPEED).x).toBe(0);
-      expect(floatPosition(t, RX, 0, SPEED).y).toBe(0);
-    }
-    expect(floatPosition(5_000, 0, 0, SPEED)).toEqual({ x: 0, y: 0 });
-  });
-
-  test("a negative range is treated as zero", () => {
-    expect(floatPosition(5_000, -50, -50, SPEED)).toEqual({ x: 0, y: 0 });
-  });
-
-  test("deterministic for the same t", () => {
-    expect(floatPosition(987_654, RX, RY, SPEED)).toEqual(floatPosition(987_654, RX, RY, SPEED));
-  });
-});
 
 describe("floatRange", () => {
   test("viewport minus content minus both margins, per axis", () => {
@@ -229,45 +154,41 @@ describe("zoneTarget", () => {
   });
 });
 
-describe("anchoredPosition", () => {
+describe("stagePosition", () => {
   const RANGE = { x: 440, y: 400 };
 
-  test("drifts within +-drift of the anchor and moves over time", () => {
-    const anchor = { x: 200, y: 200 };
-    const seen = new Set<number>();
-    for (let t = 0; t < 600_000; t += 1_000) {
-      const p = anchoredPosition(anchor, RANGE, t, 60, 3);
-      expect(Math.abs(p.x - anchor.x)).toBeLessThanOrEqual(60);
-      expect(Math.abs(p.y - anchor.y)).toBeLessThanOrEqual(60);
-      seen.add(p.x);
-    }
-    expect(seen.size).toBeGreaterThan(30);
+  test("margin plus the anchor fraction of the range, rounded to whole px", () => {
+    expect(stagePosition({ x: 0, y: 0 }, RANGE, 40)).toEqual({ x: 40, y: 40 });
+    expect(stagePosition({ x: 1, y: 1 }, RANGE, 40)).toEqual({ x: 480, y: 440 });
+    expect(stagePosition({ x: 0.5, y: 0.25 }, RANGE, 40)).toEqual({ x: 260, y: 140 });
   });
 
-  test("moves every second at the float speed (x, away from the edges)", () => {
-    const anchor = { x: 200, y: 200 };
-    const a = anchoredPosition(anchor, RANGE, 10_000, 60, 3);
-    const b = anchoredPosition(anchor, RANGE, 11_000, 60, 3);
-    expect(b.x - a.x).toBe(3);
-  });
-
-  test("clamped inside the full range even for an anchor on the edge", () => {
-    for (const anchor of [
-      { x: 0, y: 0 },
-      { x: 440, y: 400 },
-    ]) {
-      for (let t = 0; t < 300_000; t += 997) {
-        const p = anchoredPosition(anchor, RANGE, t, 60, 3);
-        expect(p.x).toBeGreaterThanOrEqual(0);
-        expect(p.x).toBeLessThanOrEqual(RANGE.x);
-        expect(p.y).toBeGreaterThanOrEqual(0);
-        expect(p.y).toBeLessThanOrEqual(RANGE.y);
-      }
+  test("always integers, whatever the fraction, range or margin", () => {
+    for (let i = 0; i <= 200; i++) {
+      const frac = { x: i / 200, y: (i * 7) / 1400 };
+      const p = stagePosition(frac, { x: 437.3, y: 391.9 }, 40.4);
+      expect(Number.isInteger(p.x)).toBe(true);
+      expect(Number.isInteger(p.y)).toBe(true);
     }
   });
 
-  test("a zero range keeps that axis at 0", () => {
-    expect(anchoredPosition({ x: 0, y: 100 }, { x: 0, y: 400 }, 5_000, 60, 3).x).toBe(0);
+  test("clamped into the range even for a fraction outside 0..1", () => {
+    expect(stagePosition({ x: -2, y: 5 }, RANGE, 40)).toEqual({ x: 40, y: 440 });
+    expect(stagePosition({ x: 9, y: -1 }, RANGE, 40)).toEqual({ x: 480, y: 40 });
+  });
+
+  test("a zero range pins that axis to the margin", () => {
+    expect(stagePosition({ x: 0.7, y: 0.7 }, { x: 0, y: 400 }, 40)).toEqual({ x: 40, y: 320 });
+    expect(stagePosition({ x: 0.7, y: 0.7 }, { x: 0, y: 0 }, 40)).toEqual({ x: 40, y: 40 });
+  });
+
+  test("a zone target from zoneTarget lands on exactly that pixel", () => {
+    const rng = mulberry32(3);
+    for (let i = 0; i < 50; i++) {
+      const t = zoneTarget({ col: i % 3, row: Math.floor(i / 3) % 3 }, RANGE, rng);
+      const frac = { x: t.x / RANGE.x, y: t.y / RANGE.y };
+      expect(stagePosition(frac, RANGE, 40)).toEqual({ x: 40 + t.x, y: 40 + t.y });
+    }
   });
 });
 

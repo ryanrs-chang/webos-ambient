@@ -1,8 +1,8 @@
 # webos-ambient
 
-A packaged webOS web app for an LG OLED TV (built for a C6, 1920x1080): a clock and the local weather, on screen all day. Black background, no seconds, and the whole layout drifts slowly and continuously and, every few minutes, fades out and reappears in another region of the screen, to protect the panel from burn-in.
+A packaged webOS web app for an LG OLED TV (built for a C6, 1920x1080): a clock and the local weather, on screen all day. Black background, no seconds, and the whole layout sits still on whole pixels (so the text stays sharp) and, every few minutes, fades out and reappears in another region of the screen, to protect the panel from burn-in.
 
-The forecast comes from [Open-Meteo](https://open-meteo.com/) (no API key). Place, coordinates and time zone come from your own `config.local.json` (see Configuration below); the refresh interval is in `src/config.ts`. All of it is bundled at build time, and so are the burn-in settings: `floatSpeedPxPerS` (default 3 px/s along x, y moves at 0.73 of that), `floatMarginPx` (default 40, the border the content keeps from the screen edge) and the zone relocation. The screen's free area is a 3x3 grid dealt like a shuffled deck, so every region is visited once per nine relocations and never the same one twice in a row. `relocateMinutes` (default 3) is the interval, `relocateOffsetSec` (default 30) the second past the minute it happens at (so it never lands on the :00 digit roll) and `relocateFadeMs` (default 1200) the length of the fade out and of the fade back in. Between relocations the block drifts about 60 px around its spot, so it is never still. With the system "reduce motion" setting it still relocates, but without the fade.
+The forecast comes from [Open-Meteo](https://open-meteo.com/) (no API key). Place, coordinates and time zone come from your own `config.local.json` (see Configuration below); the refresh interval is in `src/config.ts`. All of it is bundled at build time, and so are the burn-in settings: `floatMarginPx` (default 40, the border the content keeps from the screen edge) and the zone relocation. The screen's free area is a 3x3 grid dealt like a shuffled deck, so every region is visited once per nine relocations and never the same one twice in a row. `relocateMinutes` (default 3) is the interval, `relocateOffsetSec` (default 30) the second past the minute it happens at (so it never lands on the :00 digit roll) and `relocateFadeMs` (default 1200) the length of the fade out and of the fade back in. Between relocations the block does not move at all: a continuous drift left the text blurry on the TV. With the system "reduce motion" setting it still relocates, but without the fade.
 
 ## Screenshots
 
@@ -19,7 +19,7 @@ Captured headless at 1920x1080 and downscaled to 1280x720, from the bundled fore
   </tr>
 </table>
 
-Effects (not frozen, so the particles and meteors move; the layout floats to a different spot on the screen, as it does all day):
+Effects (not frozen, so the particles and meteors move; the layout jumps to a different spot on the screen every few minutes, as it does all day):
 
 ![Rain effect in the Ambient theme](docs/screenshots/rain.png)
 
@@ -67,13 +67,13 @@ Leak guard: `bun run check:secrets` (also part of `bun test`) fails if your lati
 | Up / Down    | Brightness +/- 10% (30%-100%) |
 | OK           | Show the current theme name   |
 
-Every theme animates the weather on a canvas behind the clock (`src/effects/particles.ts`): rain and storm streaks (a storm adds a rare, very soft flash), snow, twinkling stars on clear nights, faint light rays on clear days, slow drifting haze for cloudy and fog, and partly cloudy as its own thing (a few clouds with light rays by day, or about 40 stars with clouds by night). The effect follows the forecast's current weather and day/night; without a forecast nothing animates. It is deliberately dim and OLED-safe: peak alpha per kind is capped (0.06 to 0.5, tiny particles only), nothing stays put (stars respawn elsewhere every 1 to 3 minutes), and it is capped at about 30 fps. 氛圍 shows it at full strength (and is the only theme with the tinted backdrop); the pure-black themes (極簡, 今日預報, 指針) show it at 60% of those alphas.
+Every theme animates the weather on a canvas behind the clock (`src/effects/particles.ts`): rain and storm streaks (a storm adds a rare, very soft flash), snow, twinkling stars on clear nights, faint light rays on clear days, layered, flat-bottomed clouds drifting slowly for cloudy and fog (fog as wider, lower bands), and partly cloudy as its own thing (a few clouds with light rays by day, or about 40 stars with clouds by night). The effect follows the forecast's current weather and day/night; without a forecast nothing animates. It is deliberately dim and OLED-safe: peak alpha per kind is capped (0.12 to 0.7, thin particles and soft clouds only), nothing stays put (stars respawn elsewhere every 1 to 3 minutes), and it is capped at about 30 fps. 氛圍 shows it at full strength (and is the only theme with the tinted backdrop); the pure-black themes (極簡, 今日預報, 指針) show it at the same strength (an earlier 60% was invisible on a real TV).
 
 ### Fancy effects
 
 Four more effects, inspired by [Magic UI](https://magicui.design) (meteors, shimmer, orbiting circles, blur-fade) but plain CSS keyframes on `transform` and `opacity` (blur only on the small `#content` entrance): no React, no Motion. All are dim, moving, and off under reduced motion and `?freeze=1`. The TV runs all four.
 
-- **Meteors** (`src/effects/meteors.ts`, `#meteors` layer between `#effects` and `#stage`): on a clear or partly cloudy night (the shown forecast, or the dev weather preview) in every theme, one shooting star every 8 to 25 s: a 1 to 2 px line with a gradient tail, starting along the top or right edge, travelling 600 to 900 px down and to the left in 1.2 to 1.8 s, then removed. Head alpha is at most 0.35, times 0.6 on the black themes (the same intensity as the weather canvas).
+- **Meteors** (`src/effects/meteors.ts`, `#meteors` layer between `#effects` and `#stage`): on a clear or partly cloudy night (the shown forecast, or the dev weather preview) in every theme, one shooting star every 8 to 25 s: a 1 to 2 px line with a gradient tail, starting along the top or right edge, travelling 600 to 900 px down and to the left in 1.2 to 1.8 s, then removed. Head alpha is at most 0.35, times the theme's intensity (the same as the weather canvas, 1 on every theme now).
 - **Shimmer** (`src/effects/shimmer.ts`): every 20 to 60 s a soft glow (peak alpha 0.25, 1.6 s) sweeps once across the date line and the big temperature (`.shimmer` elements, `.shimmer::after`). It is scheduled on its own timer and applied to whatever `.shimmer` elements exist at that moment, so the once-a-minute `innerHTML` rebuild does not matter.
 - **Orbiting dots** (`orbit` in `src/icons.ts`): three 3.5 px dots (alpha 0.4) circle the main weather icon of 極簡, 指針 and 今日預報, one rotation every 18, 24 (the other way) and 30 s. They loop forever, so `syncLoops` (`src/anim.ts`) puts them back on the page clock after each rebuild and they never jump. 氛圍 and the hourly strip have none.
 - **Blur-fade**: the theme-switch entrance is opacity 0 to 1, blur 8 px to 0 and 8 px up over 500 ms (the leaving animation is unchanged), and the block also blur-fades back in after a relocation jump.
@@ -113,7 +113,7 @@ Styles are [Tailwind CSS v4](https://tailwindcss.com/) (`tailwindcss` and `@tail
 
 ### Freeze
 
-`?freeze=1` (http/https only, never from `file://`) makes the page deterministic for screenshots and visual comparison: the content sits at the zone-0 anchor with no drift and no relocation, the clock is pinned to 2026-11-24 18:00 Asia/Taipei (the fixture's current hour), all CSS animation and transitions are off and the weather canvas is hidden. `?now=2026-01-02T03:04:00Z` pins the clock on its own (and overrides the freeze clock). For example, with `PORT=5199 bun scripts/serve.ts` running:
+`?freeze=1` (http/https only, never from `file://`) makes the page deterministic for screenshots and visual comparison: the content sits at the zone-0 anchor with no relocation, the clock is pinned to 2026-11-24 18:00 Asia/Taipei (the fixture's current hour), all CSS animation and transitions are off and the weather canvas is hidden. `?now=2026-01-02T03:04:00Z` pins the clock on its own (and overrides the freeze clock). For example, with `PORT=5199 bun scripts/serve.ts` running:
 
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --window-size=1920,1080 \
       --force-device-scale-factor=1 --virtual-time-budget=4000 --screenshot=/tmp/minimal.png \

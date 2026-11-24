@@ -23,9 +23,7 @@ export interface Config {
   defaultTheme: string;
   /** Where the forecast comes from; overridable for local development. */
   weatherUrl: string;
-  /** Burn-in protection: how fast the content floats across the screen (x axis; y is slower). */
-  floatSpeedPxPerS: number;
-  /** Keep-out border: the content never floats closer than this to a screen edge. */
+  /** Keep-out border: the content never sits closer than this to a screen edge. */
   floatMarginPx: number;
   /** Burn-in protection: every this many minutes the content fades out and reappears in another screen region. */
   relocateMinutes: number;
@@ -43,7 +41,6 @@ export const defaultConfig: Config = {
   refreshMinutes: 15,
   defaultTheme: "minimal",
   weatherUrl: "https://api.open-meteo.com/v1/forecast",
-  floatSpeedPxPerS: 3,
   floatMarginPx: 40,
   relocateMinutes: 3,
   relocateOffsetSec: 30,

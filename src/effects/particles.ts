@@ -27,7 +27,7 @@ export interface Particle {
   /** px per second */
   vx: number;
   vy: number;
-  /** Extent in px: streak length, flake/star radius, blob radius, ray length. The bounds check uses it. */
+  /** Extent in px: streak length, flake/star radius, cloud half-width, ray length. The bounds check uses it. */
   size: number;
   /** Current alpha, already within the kind's maximum. */
   alpha: number;
@@ -45,6 +45,13 @@ export interface Particle {
   angle: number;
   spin: number;
   width: number;
+  /** Clouds: width / height of the drawn sprite (1 for everything else). */
+  aspect: number;
+  /** Clouds: index into CLOUD_VARIANTS (or FOG_VARIANTS in a fog scene). */
+  variant: number;
+  /** Clouds: the vertical centre line and the amplitude (px) of the slow bob around it; `phase`/`freq` drive it. */
+  baseY: number;
+  bob: number;
 }
 
 export interface FlashState {
@@ -79,23 +86,93 @@ export const MAX_PARTICLES: Record<WeatherKind, number> = {
   fog: 7,
 };
 
+/** An ellipse of a cloud sprite, in sprite pixels: centre (x, y) and radii. */
+export interface CloudPuff {
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+}
+
+/** A cloud drawn once to an offscreen sprite of w x h px: 3-5 overlapping, wide, flat puffs sharing one flat base. */
+export interface CloudVariant {
+  w: number;
+  h: number;
+  puffs: CloudPuff[];
+}
+
+export const CLOUD_VARIANTS: CloudVariant[] = [
+  {
+    w: 512,
+    h: 170,
+    puffs: [
+      { x: 135, y: 116, rx: 120, ry: 40 },
+      { x: 200, y: 116, rx: 105, ry: 40 },
+      { x: 250, y: 100, rx: 150, ry: 56 },
+      { x: 375, y: 112, rx: 130, ry: 44 },
+    ],
+  },
+  {
+    w: 512,
+    h: 150,
+    puffs: [
+      { x: 120, y: 102, rx: 105, ry: 36 },
+      { x: 230, y: 94, rx: 120, ry: 44 },
+      { x: 335, y: 90, rx: 125, ry: 48 },
+      { x: 415, y: 108, rx: 95, ry: 30 },
+    ],
+  },
+  {
+    w: 512,
+    h: 130,
+    puffs: [
+      { x: 150, y: 80, rx: 130, ry: 38 },
+      { x: 290, y: 72, rx: 145, ry: 46 },
+      { x: 400, y: 86, rx: 105, ry: 32 },
+    ],
+  },
+];
+
+/** Fog: wider and flatter bands than a cloud (the sprite is also painted at lower contrast). */
+export const FOG_VARIANTS: CloudVariant[] = [
+  {
+    w: 1024,
+    h: 180,
+    puffs: [
+      { x: 220, y: 115, rx: 200, ry: 45 },
+      { x: 500, y: 100, rx: 260, ry: 60 },
+      { x: 800, y: 112, rx: 210, ry: 48 },
+    ],
+  },
+  {
+    w: 1024,
+    h: 150,
+    puffs: [
+      { x: 200, y: 95, rx: 185, ry: 40 },
+      { x: 430, y: 85, rx: 230, ry: 50 },
+      { x: 650, y: 93, rx: 200, ry: 42 },
+      { x: 840, y: 99, rx: 170, ry: 36 },
+    ],
+  },
+];
+
 /** One kind of particle in a scene and the brightest it may be. */
 interface Part {
   shape: Shape;
   max: number;
 }
 
-const STAR: Part = { shape: "star", max: 0.5 };
-const RAY: Part = { shape: "ray", max: 0.06 };
-const CLOUD: Part = { shape: "blob", max: 0.07 };
+const STAR: Part = { shape: "star", max: 0.7 };
+const RAY: Part = { shape: "ray", max: 0.12 };
+const CLOUD: Part = { shape: "blob", max: 0.15 };
 
 function partsOf(kind: EffectKind, daypart: Daypart): Part[] {
   switch (kind) {
     case "rain":
     case "storm":
-      return [{ shape: "streak", max: 0.25 }];
+      return [{ shape: "streak", max: 0.45 }];
     case "snow":
-      return [{ shape: "flake", max: 0.35 }];
+      return [{ shape: "flake", max: 0.55 }];
     case "clear":
       return [daypart === "night" ? STAR : RAY];
     case "partly":
@@ -104,7 +181,7 @@ function partsOf(kind: EffectKind, daypart: Daypart): Part[] {
     case "cloudy":
       return [CLOUD];
     case "fog":
-      return [{ shape: "blob", max: 0.1 }];
+      return [{ shape: "blob", max: 0.2 }];
     default:
       return [];
   }
@@ -115,8 +192,11 @@ export function MAX_ALPHA(kind: EffectKind, daypart: Daypart): number {
   return Math.max(0, ...partsOf(kind, daypart).map((part) => part.max));
 }
 
-/** Pure-black themes (minimal, forecast, analog) show the effect at this fraction of the ambient alphas. */
-export const BLACK_THEME_INTENSITY = 0.6;
+/**
+ * Pure-black themes (minimal, forecast, analog) show the effect at this fraction of the ambient alphas. 0.6 was
+ * invisible on the real TV, so they are as bright as ambient now; the parameter stays for tuning.
+ */
+export const BLACK_THEME_INTENSITY = 1;
 
 export function effectIntensity(themeId: string): number {
   return themeId === "ambient" ? 1 : BLACK_THEME_INTENSITY;
@@ -131,7 +211,7 @@ export function clampDt(ms: number): number {
 // Storm flash: very soft and rare.
 export const FLASH_MIN_MS = 20_000;
 export const FLASH_MAX_MS = 60_000;
-export const FLASH_PEAK = 0.08;
+export const FLASH_PEAK = 0.1;
 export const FLASH_DURATION_MS = 300;
 const FLASH_RISE_MS = 45;
 
@@ -172,6 +252,11 @@ export function sceneShapes(kind: EffectKind, daypart: Daypart): Shape[] {
   return partsOf(kind, daypart).map((part) => part.shape);
 }
 
+/** Rain streak length range (px) and stroke width; long and wide enough to read on a TV at 3 m. */
+const STREAK_MIN_LEN = 22;
+const STREAK_MAX_LEN = 52;
+export const STREAK_WIDTH = 1.5;
+
 const STAR_FADE_MS = 4000;
 const RAY_MAX_ANGLE = 0.4;
 
@@ -193,14 +278,18 @@ function blank(): Particle {
     angle: 0,
     spin: 0,
     width: 0,
+    aspect: 1,
+    variant: 0,
+    baseY: 0,
+    bob: 0,
   };
 }
 
 function spawnStreak(p: Particle, size: Size, rng: Rng, anywhere: boolean, k: number): void {
-  p.size = between(rng, 14, 38);
+  p.size = between(rng, STREAK_MIN_LEN, STREAK_MAX_LEN);
   p.vy = between(rng, 800, 1400);
   p.vx = p.vy * 0.2;
-  p.peak = between(rng, 0.08, 0.25) * k;
+  p.peak = between(rng, 0.15, 0.45) * k;
   p.alpha = p.peak;
   p.x = between(rng, -p.size, size.w);
   p.y = anywhere ? between(rng, -p.size, size.h) : -p.size;
@@ -212,7 +301,7 @@ function spawnFlake(p: Particle, size: Size, rng: Rng, anywhere: boolean, k: num
   p.sway = between(rng, 8, 26);
   p.freq = between(rng, 0.0004, 0.0012);
   p.phase = rng() * Math.PI * 2;
-  p.peak = between(rng, 0.12, 0.35) * k;
+  p.peak = between(rng, 0.19, 0.55) * k;
   p.alpha = p.peak;
   p.x = between(rng, -p.size, size.w + p.size);
   p.y = anywhere ? between(rng, -p.size, size.h) : -p.size;
@@ -227,7 +316,7 @@ function spawnStar(p: Particle, size: Size, rng: Rng, fresh: boolean, k: number)
   p.age = fresh ? rng() * p.life : 0;
   p.phase = rng() * Math.PI * 2;
   p.freq = (Math.PI * 2) / between(rng, 3000, 8000);
-  p.peak = between(rng, 0.2, 0.5) * k;
+  p.peak = between(rng, 0.28, 0.7) * k;
   starAlpha(p);
 }
 
@@ -245,17 +334,28 @@ function spawnRay(p: Particle, size: Size, rng: Rng, k: number): void {
   p.angle = between(rng, -0.3, 0.3);
   p.spin = between(rng, 0.004, 0.012) * (rng() < 0.5 ? -1 : 1);
   p.width = between(rng, 140, 300);
-  p.peak = between(rng, 0.02, 0.06) * k;
+  p.peak = between(rng, 0.04, 0.12) * k;
   p.alpha = p.peak;
 }
 
-/** `maxAlpha` is the cap already scaled by intensity. */
-function spawnBlob(p: Particle, size: Size, rng: Rng, maxAlpha: number): void {
-  p.size = between(rng, 220, 460);
+/**
+ * `maxAlpha` is the cap already scaled by intensity. A cloud is a wide, flat sprite (`CLOUD_VARIANTS`) that drifts
+ * sideways and bobs a few px; fog is the same with bigger, flatter bands (`FOG_VARIANTS`) low on the screen.
+ */
+function spawnBlob(p: Particle, size: Size, rng: Rng, maxAlpha: number, fog: boolean): void {
+  const variants = fog ? FOG_VARIANTS : CLOUD_VARIANTS;
+  p.variant = Math.min(variants.length - 1, Math.floor(rng() * variants.length));
+  const v = variants[p.variant];
+  p.aspect = v.w / v.h;
+  p.size = fog ? between(rng, 520, 900) : between(rng, 200, 380);
   p.x = between(rng, -p.size, size.w + p.size);
-  p.y = rng() * size.h;
+  p.baseY = fog ? between(rng, size.h * 0.4, size.h * 0.95) : between(rng, size.h * 0.06, size.h * 0.7);
+  p.bob = between(rng, 5, 14);
+  p.phase = rng() * Math.PI * 2;
+  p.freq = (Math.PI * 2) / between(rng, 25_000, 50_000);
+  p.y = p.baseY + p.bob * Math.sin(p.phase);
   p.vx = between(rng, 4, 14) * (rng() < 0.5 ? -1 : 1);
-  p.peak = between(rng, maxAlpha * 0.4, maxAlpha);
+  p.peak = between(rng, maxAlpha * 0.6, maxAlpha);
   p.alpha = p.peak;
 }
 
@@ -296,7 +396,7 @@ export function createScene(kind: EffectKind, daypart: Daypart, size: Size, rng:
           spawnRay(p, size, rng, intensity);
           break;
         case "blob":
-          spawnBlob(p, size, rng, part.max * intensity);
+          spawnBlob(p, size, rng, part.max * intensity, kind === "fog");
           break;
       }
       particles.push(p);
@@ -365,8 +465,10 @@ export function stepScene(scene: Scene, dtMs: number, rng: Rng): Scene {
         }
         break;
       case "blob":
+        p.age += dtMs;
         p.x += p.vx * dt;
         wrapX(p, size.w);
+        p.y = p.baseY + p.bob * Math.sin(p.phase + p.age * p.freq);
         break;
     }
   }
@@ -412,15 +514,34 @@ function sprite(key: string, w: number, h: number, paint: (g: CanvasRenderingCon
   return c;
 }
 
-/** Soft round blob: a white radial gradient fading to nothing, tinted by `rgb`. */
-function blobSprite(rgb: string): HTMLCanvasElement {
-  return sprite(`blob:${rgb}`, 256, 256, (g) => {
-    const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-    grad.addColorStop(0, `rgba(${rgb},1)`);
-    grad.addColorStop(0.5, `rgba(${rgb},0.4)`);
-    grad.addColorStop(1, `rgba(${rgb},0)`);
-    g.fillStyle = grad;
-    g.fillRect(0, 0, 256, 256);
+/**
+ * One cloud variant, painted once: each puff is a soft elliptical radial gradient (unit circle scaled to its
+ * radii), then the bottom is faded out in a band so the base is flat. Fog uses a lower-contrast core.
+ */
+function cloudSprite(variants: CloudVariant[], index: number, rgb: string, fog: boolean): HTMLCanvasElement {
+  const v = variants[index];
+  return sprite(`cloud:${fog ? "fog" : "cloud"}:${index}:${rgb}`, v.w, v.h, (g) => {
+    const [core, mid] = fog ? [0.55, 0.3] : [1, 0.75];
+    for (const q of v.puffs) {
+      g.save();
+      g.translate(q.x, q.y);
+      g.scale(q.rx, q.ry);
+      const grad = g.createRadialGradient(0, 0, 0, 0, 0, 1);
+      grad.addColorStop(0, `rgba(${rgb},${core})`);
+      grad.addColorStop(0.6, `rgba(${rgb},${mid})`);
+      grad.addColorStop(1, `rgba(${rgb},0)`);
+      g.fillStyle = grad;
+      g.fillRect(-1, -1, 2, 2);
+      g.restore();
+    }
+    const base = Math.max(...v.puffs.map((q) => q.y + q.ry));
+    const flat = g.createLinearGradient(0, 0, 0, v.h);
+    flat.addColorStop(0, "rgba(0,0,0,1)");
+    flat.addColorStop(Math.max(0, (base - 0.22 * v.h) / v.h), "rgba(0,0,0,1)");
+    flat.addColorStop(Math.min(1, base / v.h), "rgba(0,0,0,0)");
+    g.globalCompositeOperation = "destination-in";
+    g.fillStyle = flat;
+    g.fillRect(0, 0, v.w, v.h);
   });
 }
 
@@ -464,7 +585,7 @@ function drawShape(
   switch (shape) {
     case "streak": {
       ctx.strokeStyle = "rgb(150,172,205)";
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = STREAK_WIDTH;
       for (const p of particles) {
         ctx.globalAlpha = p.alpha * fade;
         // The tail trails the direction of travel.
@@ -500,10 +621,14 @@ function drawShape(
       break;
     }
     case "blob": {
-      const img = blobSprite(scene.kind === "fog" ? "185,190,195" : "170,185,210");
+      const fog = scene.kind === "fog";
+      const variants = fog ? FOG_VARIANTS : CLOUD_VARIANTS;
+      const rgb = fog ? "185,190,195" : "170,185,210";
       for (const p of particles) {
+        const w = p.size * 2;
+        const h = w / p.aspect;
         ctx.globalAlpha = p.alpha * fade;
-        ctx.drawImage(img, p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
+        ctx.drawImage(cloudSprite(variants, p.variant, rgb, fog), p.x - p.size, p.y - h / 2, w, h);
       }
       break;
     }

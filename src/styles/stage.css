@@ -1,8 +1,8 @@
 /* Burn-in and screen layers (src/main.ts, src/burnin.ts). Hand-written on purpose: positions, opacities and
-   transforms here are set from JS (the float, the --dim brightness, the relocation fade), so utilities would only
+   transforms here are set from JS (the stage position, the --dim brightness, the relocation fade), so utilities would only
    be a second place to look. */
 
-/* Fixed full-screen layer for the ambient tint; it must not float with the content. */
+/* Fixed full-screen layer for the ambient tint; it must not move with the content. */
 #backdrop {
   --tint-day: #141a24;
   --tint-night: #04060a;
@@ -19,7 +19,7 @@
   display: none;
 }
 
-/* Weather effects: above the tint, below the floating stage. Dim, moving, never a large bright area. */
+/* Weather effects: above the tint, below the stage. Dim, moving, never a large bright area. */
 #effects {
   position: fixed;
   top: 0;
@@ -43,15 +43,14 @@
   pointer-events: none;
 }
 
-/* Sized to its content and floated by src/main.ts (src/burnin.ts), never full screen. */
+/* Sized to its content and positioned by src/main.ts (src/burnin.ts), never full screen. */
 #stage {
   position: absolute;
   top: 0;
   left: 0;
   opacity: var(--dim);
-  /* The position is set once a second; a linear 1 s glide makes the motion continuous. */
-  transition: transform 1s linear;
-  will-change: transform;
+  /* Only ever jumps (src/main.ts, placeStage): an integer translate, no transition and no will-change, so the
+     text is rasterised on whole pixels and never sits mid-glide at a sub-pixel offset. */
 }
 
 /* Relocation fade (src/main.ts, relocate()). Its own layer so it never fights #stage's --dim opacity or the

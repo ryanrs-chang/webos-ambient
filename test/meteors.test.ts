@@ -128,10 +128,15 @@ describe("createMeteor", () => {
     expect(Math.min(...alphas)).toBeGreaterThan(0.1);
   });
 
-  test("the black themes show it at 60% of that cap", () => {
+  test("the black themes show it at cap * their intensity", () => {
     const alphas = draw(500, BLACK_THEME_INTENSITY).map((m) => m.alpha);
-    expect(Math.max(...alphas)).toBeLessThanOrEqual(0.35 * 0.6 + 1e-9);
+    expect(Math.max(...alphas)).toBeLessThanOrEqual(0.35 * BLACK_THEME_INTENSITY + 1e-9);
     expect(Math.max(...alphas)).toBeGreaterThan(0.15);
+  });
+
+  test("a lower intensity scales the cap down", () => {
+    const alphas = draw(500, 0.6).map((m) => m.alpha);
+    expect(Math.max(...alphas)).toBeLessThanOrEqual(0.35 * 0.6 + 1e-9);
   });
 
   test("is deterministic for a given seed", () => {

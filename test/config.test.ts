@@ -53,10 +53,10 @@ describe("parseLaunchParams", () => {
   }
 });
 
-describe("defaultConfig float settings", () => {
-  test("floats at 3 px/s with a 40 px margin", () => {
-    expect(defaultConfig.floatSpeedPxPerS).toBe(3);
+describe("defaultConfig placement settings", () => {
+  test("keeps a 40 px margin and has no continuous drift setting", () => {
     expect(defaultConfig.floatMarginPx).toBe(40);
+    expect("floatSpeedPxPerS" in defaultConfig).toBe(false);
   });
 });
 

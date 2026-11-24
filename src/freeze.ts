@@ -1,5 +1,5 @@
 // Dev-only deterministic mode for screenshots and visual comparison (README, "Freeze"). `?freeze=1` pins the
-// content to the zone-0 anchor with no drift or relocation, pauses CSS animations and hides the weather canvas;
+// content to the zone-0 anchor with no relocation, pauses CSS animations and hides the weather canvas;
 // `?now=<ISO time>` pins the clock. Never active from file:// (the TV).
 
 export interface FreezeParams {
