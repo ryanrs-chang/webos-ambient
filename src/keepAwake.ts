@@ -5,12 +5,16 @@
 //   2. each time the TV is about to start the saver it publishes a message carrying a `timestamp`;
 //   3. answer that timestamp with `responseScreenSaverRequest` and `ack: false` (do not start it).
 // Undocumented, so every failure is logged and swallowed: the clock must keep running without it.
+// Fallback: the veto lasts at most `maxVetoMs` (1 h by default) since the app started or the last remote key
+// (`poke()`); after that each request is answered `ack: true`, so a TV left on by mistake still goes to sleep.
 // The pure parts (payloads, the reply decision) and the bridge wiring are unit-tested; a desktop browser has no
 // bridge and gets a no-op.
 
 export const REGISTER_URI = "luna://com.webos.service.tvpower/power/registerScreenSaverRequest";
 export const RESPONSE_URI = "luna://com.webos.service.tvpower/power/responseScreenSaverRequest";
 export const CLIENT_NAME = "dev.ryanrs.ambient";
+/** How long the screen saver is held off without any remote key, before the TV is let go. */
+export const MAX_VETO_MS = 60 * 60_000;
 
 export function registerPayload(clientName: string): string {
   return JSON.stringify({ subscribe: true, clientName });
@@ -18,16 +22,23 @@ export function registerPayload(clientName: string): string {
 
 export type ScreenSaverDecision =
   | { action: "veto"; payload: string }
+  | { action: "allow"; payload: string }
   | { action: "subscribed" }
   | { action: "error"; message: string }
   | { action: "ignore" };
 
+/** True while the veto window, counted from `sinceMs` (start or last remote key), is still open. */
+export function vetoWindowOpen(nowMs: number, sinceMs: number, maxVetoMs: number): boolean {
+  return nowMs - sinceMs < maxVetoMs;
+}
+
 /**
  * What to do with one message from the subscription. A message with a timestamp is a screen saver about to
  * start (webOS 4 sends no `state`, so the timestamp is the signal) and gets `ack: false` with that timestamp
- * echoed unchanged; the first answer has none and only confirms the subscription.
+ * echoed unchanged, or `ack: true` once `veto` is false (the window is over); the first answer has none and only
+ * confirms the subscription.
  */
-export function decideScreenSaverReply(raw: string, clientName: string): ScreenSaverDecision {
+export function decideScreenSaverReply(raw: string, clientName: string, veto = true): ScreenSaverDecision {
   let msg: unknown;
   try {
     msg = JSON.parse(raw);
@@ -40,7 +51,10 @@ export function decideScreenSaverReply(raw: string, clientName: string): ScreenS
     return { action: "error", message: typeof m.errorText === "string" ? m.errorText : "returnValue false" };
   }
   if (m.timestamp === undefined || m.timestamp === null) return { action: "subscribed" };
-  return { action: "veto", payload: JSON.stringify({ clientName, ack: false, timestamp: m.timestamp }) };
+  return {
+    action: veto ? "veto" : "allow",
+    payload: JSON.stringify({ clientName, ack: !veto, timestamp: m.timestamp }),
+  };
 }
 
 export interface ServiceBridge {
@@ -57,7 +71,15 @@ export interface BridgeHost {
 }
 
 export interface KeepAwake {
+  /** Someone is there (a remote key): restart the veto window. */
+  poke(): void;
   stop(): void;
+}
+
+export interface KeepAwakeOptions {
+  clientName?: string;
+  maxVetoMs?: number;
+  now?: () => number;
 }
 
 function errText(e: unknown): string {
@@ -68,7 +90,7 @@ function errText(e: unknown): string {
 export function startKeepAwake(
   host: BridgeHost,
   log: (message: string) => void = (m) => console.log(m),
-  clientName: string = CLIENT_NAME,
+  { clientName = CLIENT_NAME, maxVetoMs = MAX_VETO_MS, now = Date.now }: KeepAwakeOptions = {},
 ): KeepAwake | null {
   const Bridge = host.WebOSServiceBridge ?? host.PalmServiceBridge;
   if (!Bridge) {
@@ -77,11 +99,12 @@ export function startKeepAwake(
   }
   let stopped = false;
   let vetoes = 0;
+  let since = now();
   try {
     const sub = new Bridge();
     sub.onservicecallback = (raw) => {
       if (stopped) return;
-      const decision = decideScreenSaverReply(raw, clientName);
+      const decision = decideScreenSaverReply(raw, clientName, vetoWindowOpen(now(), since, maxVetoMs));
       switch (decision.action) {
         case "subscribed":
           log("[keepAwake] subscribed to registerScreenSaverRequest");
@@ -90,6 +113,7 @@ export function startKeepAwake(
           log(`[keepAwake] tvpower refused: ${decision.message}`);
           break;
         case "veto":
+        case "allow":
           try {
             const reply = new Bridge();
             reply.onservicecallback = (ack) => {
@@ -97,8 +121,12 @@ export function startKeepAwake(
               reply.cancel?.();
             };
             reply.call(RESPONSE_URI, decision.payload);
-            vetoes++;
-            log(`[keepAwake] screen saver vetoed (#${vetoes}) ${raw}`);
+            if (decision.action === "veto") {
+              vetoes++;
+              log(`[keepAwake] screen saver vetoed (#${vetoes}) ${raw}`);
+            } else {
+              log(`[keepAwake] veto window over, screen saver allowed ${raw}`);
+            }
           } catch (e) {
             log(`[keepAwake] reply failed: ${errText(e)}`);
           }
@@ -110,6 +138,9 @@ export function startKeepAwake(
     sub.call(REGISTER_URI, registerPayload(clientName));
     log("[keepAwake] registerScreenSaverRequest sent");
     return {
+      poke() {
+        since = now();
+      },
       stop() {
         stopped = true;
         try {

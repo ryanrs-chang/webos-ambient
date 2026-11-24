@@ -127,8 +127,9 @@ function applyFancy(flags: FancyFlags): void {
 /** Meteors and shimmer are decoration: not under reduced motion, not in ?freeze=1 screenshots. */
 const meteors = startMeteors(meteorsLayer, () => fancy.meteors && !reducedMotion() && !freeze.frozen);
 startShimmer(content, () => fancy.shimmer && !reducedMotion() && !freeze.frozen);
-// Veto the TV's idle screen saver (it hands over to Always Ready); a no-op outside webOS.
-startKeepAwake(window as unknown as BridgeHost);
+// Veto the TV's idle screen saver (it hands over to Always Ready) for at most an hour after start or the last
+// remote key; a no-op outside webOS.
+const keepAwake = startKeepAwake(window as unknown as BridgeHost);
 
 /**
  * Burn-in protection: the stage sits still at a zone anchor (see relocate), on whole pixels. Called at start,
@@ -343,6 +344,7 @@ function commit(result: KeyResult): void {
 }
 
 document.addEventListener("keydown", (event) => {
+  keepAwake?.poke();
   const result = applyKey(prefs, event.keyCode, themes.length);
   if (!result) return;
   event.preventDefault();
@@ -351,6 +353,7 @@ document.addEventListener("keydown", (event) => {
 
 // Fired when the app is launched again while already running (e.g. from Home Assistant).
 document.addEventListener("webOSRelaunch", (event) => {
+  keepAwake?.poke();
   const detail = (event as CustomEvent<unknown>).detail;
   const params =
     typeof detail === "string" ? parseLaunchParams(detail, "") : parseLaunchParams(JSON.stringify(detail ?? {}), "");

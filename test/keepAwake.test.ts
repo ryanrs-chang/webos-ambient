@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   CLIENT_NAME,
   decideScreenSaverReply,
+  MAX_VETO_MS,
   REGISTER_URI,
   RESPONSE_URI,
   registerPayload,
   startKeepAwake,
+  vetoWindowOpen,
 } from "../src/keepAwake";
 
 describe("luna request payloads", () => {
@@ -169,5 +171,47 @@ describe("startKeepAwake", () => {
     expect(instances[0]?.cancelled).toBe(true);
     instances[0]?.onservicecallback?.('{"timestamp":"1"}');
     expect(instances.length).toBe(1);
+  });
+});
+
+describe("veto window (fallback)", () => {
+  test("lasts one hour by default", () => {
+    expect(MAX_VETO_MS).toBe(60 * 60_000);
+  });
+
+  test("is open strictly before maxVetoMs has passed", () => {
+    expect(vetoWindowOpen(1000, 1000, 5000)).toBe(true);
+    expect(vetoWindowOpen(5999, 1000, 5000)).toBe(true);
+    expect(vetoWindowOpen(6000, 1000, 5000)).toBe(false);
+  });
+
+  test("outside the window a request is answered ack:true with the same timestamp", () => {
+    const d = decideScreenSaverReply('{"timestamp":"9"}', "me", false);
+    expect(d.action).toBe("allow");
+    if (d.action === "allow") expect(JSON.parse(d.payload)).toEqual({ clientName: "me", ack: true, timestamp: "9" });
+  });
+
+  test("vetoes for an hour, then allows; a poke restarts the hour", () => {
+    const { Bridge, instances } = fakeBridgeClass();
+    const logs: string[] = [];
+    let t = 0;
+    const handle = startKeepAwake({ PalmServiceBridge: Bridge }, (m) => logs.push(m), { now: () => t });
+    const sub = instances[0];
+    const ackOf = (ts: string): unknown => {
+      sub?.onservicecallback?.(`{"timestamp":"${ts}"}`);
+      return JSON.parse(instances.at(-1)?.calls[0]?.params ?? "{}").ack;
+    };
+
+    t = MAX_VETO_MS - 1;
+    expect(ackOf("1")).toBe(false);
+    t = MAX_VETO_MS;
+    expect(ackOf("2")).toBe(true);
+    expect(logs.some((m) => m.includes("allowed"))).toBe(true);
+
+    handle?.poke();
+    t = MAX_VETO_MS + 30 * 60_000;
+    expect(ackOf("3")).toBe(false);
+    t = 2 * MAX_VETO_MS;
+    expect(ackOf("4")).toBe(true);
   });
 });
