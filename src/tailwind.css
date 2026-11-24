@@ -1,0 +1,22 @@
+/* Tailwind CSS v4 entry; `bun run build:css` writes app/style.css (generated, gitignored).
+   Cascade layers, lowest to highest: theme (tokens) < base (reset) < components (hand-written CSS in styles/)
+   < utilities (the classes in the markup). A utility therefore beats a hand-written rule of any specificity.
+   Preflight is deliberately not imported: it would change line heights and svg display, and the app must look the same. */
+
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "tw-animate-css";
+
+@import "./styles/theme.css" layer(theme);
+@import "./styles/base.css" layer(base);
+@import "./styles/stage.css" layer(components);
+@import "./styles/components.css" layer(components);
+@import "./styles/motion.css" layer(components);
+@import "./styles/dev.css" layer(components);
+
+/* Scan exactly the files whose class names are written out in full (never built with ${} interpolation). app/main.js
+   is generated and gitignored, so it is not scanned; src/ is. */
+@source "./**/*.ts";
+@source "../app/index.html";

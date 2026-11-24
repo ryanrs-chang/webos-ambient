@@ -1,0 +1,189 @@
+/* Burn-in and screen layers (src/main.ts, src/burnin.ts). Hand-written on purpose: positions, opacities and
+   transforms here are set from JS (the float, the --dim brightness, the relocation fade), so utilities would only
+   be a second place to look. */
+
+/* Fixed full-screen layer for the ambient tint; it must not float with the content. */
+#backdrop {
+  --tint-day: #141a24;
+  --tint-night: #04060a;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  opacity: var(--dim);
+  background: radial-gradient(ellipse at 50% 38%, var(--tint) 0%, #000 78%);
+}
+
+#backdrop:not([data-kind]) {
+  display: none;
+}
+
+/* Weather effects: above the tint, below the floating stage. Dim, moving, never a large bright area. */
+#effects {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  opacity: var(--dim);
+  pointer-events: none;
+}
+
+/* Shooting stars (src/effects/meteors.ts): above the weather canvas, below the stage; one element per meteor,
+   created and removed by JS. Clipped to the screen so a tail never pokes past it. */
+#meteors {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  opacity: var(--dim);
+  pointer-events: none;
+}
+
+/* Sized to its content and floated by src/main.ts (src/burnin.ts), never full screen. */
+#stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: var(--dim);
+  /* The position is set once a second; a linear 1 s glide makes the motion continuous. */
+  transition: transform 1s linear;
+  will-change: transform;
+}
+
+/* Relocation fade (src/main.ts, relocate()). Its own layer so it never fights #stage's --dim opacity or the
+   theme-switch animations on #content. The duration is set inline from config.relocateFadeMs. */
+#fade {
+  opacity: 1;
+  transition: opacity 1200ms ease-in-out;
+}
+
+#fade.relocating {
+  opacity: 0;
+}
+
+/* After the jump the block also comes back out of a blur while it fades in (JS adds .blur-in and removes it when
+   the animation ends; the duration is set inline from config.relocateFadeMs). Only the fade-in is blurred: fading
+   out stays a plain opacity transition. */
+#fade.blur-in {
+  animation: blur-in 1200ms ease-out both;
+}
+
+@keyframes blur-in {
+  from {
+    filter: blur(8px);
+  }
+
+  to {
+    filter: blur(0);
+  }
+}
+
+html.no-blur-fade #fade.blur-in {
+  animation: none;
+}
+
+#content {
+  position: relative;
+}
+
+/* The ambient tint is set from the theme's data attributes (synced onto #backdrop by src/main.ts) and is deliberately
+   dark: the brightest value is below #1a2333. */
+
+#backdrop[data-daypart="day"] {
+  --tint: var(--tint-day);
+}
+
+#backdrop[data-daypart="night"] {
+  --tint: var(--tint-night);
+}
+
+#backdrop[data-kind="clear"] {
+  --tint-day: #1a2333;
+  --tint-night: #060a14;
+}
+
+#backdrop[data-kind="partly"] {
+  --tint-day: #182030;
+  --tint-night: #060912;
+}
+
+#backdrop[data-kind="cloudy"] {
+  --tint-day: #171b22;
+  --tint-night: #06080b;
+}
+
+#backdrop[data-kind="fog"] {
+  --tint-day: #1a1d21;
+  --tint-night: #08090a;
+}
+
+#backdrop[data-kind="rain"] {
+  --tint-day: #121b26;
+  --tint-night: #04080d;
+}
+
+#backdrop[data-kind="snow"] {
+  --tint-day: #1a2028;
+  --tint-night: #070a0e;
+}
+
+#backdrop[data-kind="storm"] {
+  --tint-day: #1a1626;
+  --tint-night: #07050d;
+}
+
+#backdrop[data-kind="none"] {
+  --tint-day: #03050a;
+  --tint-night: #02030a;
+}
+
+/* Theme switch: JS (switchTheme in src/main.ts) adds these to #content. */
+
+#content.is-leaving {
+  opacity: 0;
+  transform: scale(0.98);
+  transition:
+    opacity 250ms ease-in,
+    transform 250ms ease-in;
+}
+
+#content.is-entering {
+  animation: theme-in-blur 500ms ease-out both;
+}
+
+/* Blur-fade: opacity 0 to 1, blur 8px to 0 and 8px up. Blur is only ever animated here and in #fade.blur-in, on
+   one block at a time, never on a loop. */
+@keyframes theme-in-blur {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+/* The old entrance, for the dev panel's blur-fade switch. */
+html.no-blur-fade #content.is-entering {
+  animation: theme-in 400ms ease-out both;
+}
+
+@keyframes theme-in {
+  from {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

@@ -1,0 +1,31 @@
+/* Base layer. Tailwind's preflight is not imported (see src/tailwind.css): it would change the body line height, make
+   svg display:block and so on. This is the one reset the app has always had. */
+
+:root {
+  /* Brightness (0.3 to 1), set from src/main.ts. */
+  --dim: 0.7;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* OLED rules: pure black ground, thin gray type, no large bright areas. */
+html,
+body {
+  width: 1920px;
+  height: 1080px;
+  background: #000;
+  color: var(--color-fg);
+  overflow: hidden;
+  cursor: none;
+  font-family: var(--font-sans);
+  font-weight: 300;
+}
+
+/* Dev panel is on (see src/devpanel.ts): show the mouse cursor. */
+body.dev {
+  cursor: auto;
+}

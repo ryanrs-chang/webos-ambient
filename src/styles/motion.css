@@ -1,0 +1,405 @@
+/* Motion. Only transform and opacity (and nothing that triggers layout) is animated, and everything stays dim.
+   #content is rebuilt by innerHTML every minute, so the one-shot animations below only exist in the markup of the
+   render that should play them, and src/anim.ts (syncLoops) puts the looping ones back on their old phase.
+   Kept as hand-written CSS: keyframes, pseudo-elements and the reduced-motion block are not utility territory. */
+
+/* Minute digit roll: the old digit (data-old, a pseudo-element) slides up and out while the new one comes up from below. */
+
+.digit {
+  position: relative;
+  display: inline-block;
+}
+
+.digit--changed::before {
+  content: attr(data-old);
+  position: absolute;
+  top: 0;
+  left: 0;
+  animation: digit-out 600ms ease-out both;
+}
+
+.digit__n {
+  display: inline-block;
+  animation: digit-in 600ms ease-out both;
+}
+
+@keyframes digit-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-0.4em);
+  }
+}
+
+@keyframes digit-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.4em);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.colon {
+  animation: colon-breathe 4s ease-in-out infinite;
+}
+
+@keyframes colon-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Weather icons (hooks from src/icons.ts). The hourly strip stays still: twelve more animated SVGs are not worth the CPU. */
+
+.wx-rays,
+.wx-moon,
+.wx-cloud,
+.wx-drop,
+.wx-flake,
+.wx-bolt {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.wx-rays {
+  animation: wx-spin 60s linear infinite;
+}
+
+.wx-moon {
+  animation: wx-tilt 6s ease-in-out infinite alternate;
+}
+
+.wx-cloud {
+  animation: wx-drift 8s ease-in-out infinite alternate;
+}
+
+.wx-drop {
+  animation: wx-fall 1.8s ease-in infinite;
+}
+
+.wx-flake {
+  animation: wx-snow 3.6s ease-in-out infinite;
+}
+
+.wx-bolt {
+  animation: wx-flicker 6s linear infinite;
+}
+
+.wx-drop--1,
+.wx-flake--1 {
+  animation-delay: 0.6s;
+}
+
+.wx-drop--2,
+.wx-flake--2 {
+  animation-delay: 1.2s;
+}
+
+.t-forecast__hour-icon * {
+  animation: none;
+}
+
+@keyframes wx-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes wx-tilt {
+  from {
+    transform: rotate(-4deg);
+  }
+
+  to {
+    transform: rotate(4deg);
+  }
+}
+
+@keyframes wx-drift {
+  from {
+    transform: translateX(-1.5px);
+  }
+
+  to {
+    transform: translateX(1.5px);
+  }
+}
+
+@keyframes wx-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(-1.5px);
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+@keyframes wx-snow {
+  0% {
+    opacity: 0;
+    transform: translate(-0.4px, -1.5px);
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(0.4px, 1.5px);
+  }
+}
+
+@keyframes wx-flicker {
+  0%,
+  88%,
+  94%,
+  100% {
+    opacity: 1;
+  }
+
+  90%,
+  96% {
+    opacity: 0.35;
+  }
+
+  92% {
+    opacity: 0.8;
+  }
+}
+
+/* Forecast entrance: the 12 cells fade in 40 ms apart and the rain bars grow from the left. */
+
+.t-forecast__strip--enter .t-forecast__hour {
+  animation: cell-in 400ms ease-out both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+.t-forecast__strip--enter .t-forecast__pop::after {
+  animation: bar-grow 700ms ease-out both;
+  animation-delay: calc(var(--i, 0) * 40ms + 200ms);
+}
+
+@keyframes cell-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Fancy effects (inspired by Magic UI: meteors, shimmer, orbiting circles; blur-fade is in stage.css). Pure CSS
+   keyframes on transform and opacity, all dim, all moving. The dev panel can switch each off: JS for the meteors
+   and the shimmer, html.no-orbit and html.no-blur-fade for the CSS ones. */
+
+/* Meteor: one thin line with a gradient tail, head on the left. --x0/--y0 to --x1/--y1 is its path, --rot its
+   heading, --len the tail, --w the thickness, --a the head alpha (all set inline by src/effects/meteors.ts). */
+
+.meteor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--len);
+  height: var(--w);
+  border-radius: 1px;
+  background: linear-gradient(to right, rgb(255 255 255 / var(--a)), transparent);
+  transform-origin: 0 50%;
+  animation: meteor-fly var(--dur) linear both;
+  will-change: transform, opacity;
+}
+
+@keyframes meteor-fly {
+  0% {
+    opacity: 0;
+    transform: translate(var(--x0), var(--y0)) rotate(var(--rot));
+  }
+
+  12%,
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(var(--x1), var(--y1)) rotate(var(--rot));
+  }
+}
+
+/* Shimmer: a soft elliptical glow (fading out on every side, so no hard rectangle shows) sweeps once across the element (src/effects/shimmer.ts adds .shimmer--run every 20-60 s).
+   The element is clipped to its own box, so the box must hug its text (w-fit in the theme). Peak alpha 0.25. */
+
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 45%;
+  background: radial-gradient(closest-side, rgb(255 255 255 / 0.25), transparent);
+  opacity: 0;
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+
+.shimmer--run::after {
+  animation: shimmer-sweep 1600ms ease-in-out var(--shimmer-delay, 0ms) both;
+}
+
+@keyframes shimmer-sweep {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+
+  15%,
+  85% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(320%);
+  }
+}
+
+/* Orbiting dots (src/icons.ts, orbit): three groups rotating about the icon centre (12,12 in its viewBox), each
+   with its own period, phase and direction. They loop forever, so src/anim.ts (syncLoops) keeps them on the page
+   clock across the per-minute innerHTML rebuild; the negative delays are the phases. */
+
+.wx-orbit {
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+  animation: wx-orbit 18s linear infinite;
+}
+
+.wx-orbit--0 {
+  animation-duration: 18s;
+  animation-delay: 0s;
+}
+
+.wx-orbit--1 {
+  animation-duration: 24s;
+  animation-delay: -9s;
+  animation-direction: reverse;
+}
+
+.wx-orbit--2 {
+  animation-duration: 30s;
+  animation-delay: -21s;
+}
+
+.wx-dot {
+  fill: currentColor;
+  stroke: none;
+  opacity: 0.4;
+}
+
+html.no-orbit .wx-orbit {
+  display: none;
+}
+
+@keyframes wx-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Analog: each hand sweeps linearly through the minute, from where it is now (--a) to where it will be (--to).
+   The render at :00 picks up exactly where the last sweep ended, so the hands never jump. */
+
+.t-analog__hand {
+  /* The same rotation the transform attribute holds (kept for the tests and as a fallback), about the face centre. */
+  transform: rotate(var(--a));
+  transform-origin: 100px 100px;
+  animation: hand-sweep 60s linear both;
+}
+
+@keyframes hand-sweep {
+  from {
+    transform: rotate(var(--a));
+  }
+
+  to {
+    transform: rotate(var(--to));
+  }
+}
+
+/* Reduced motion switches all of the above off. The stage float is burn-in protection and stays.
+   Every selector is scoped with html:not(.force-motion) so the dev panel can switch it off (test/style.test.ts). */
+
+@media (prefers-reduced-motion: reduce) {
+  html:not(.force-motion) .digit--changed::before {
+    display: none;
+  }
+
+  html:not(.force-motion) .digit__n,
+  html:not(.force-motion) .colon,
+  html:not(.force-motion) .wx-rays,
+  html:not(.force-motion) .wx-moon,
+  html:not(.force-motion) .wx-cloud,
+  html:not(.force-motion) .wx-drop,
+  html:not(.force-motion) .wx-flake,
+  html:not(.force-motion) .wx-bolt,
+  html:not(.force-motion) .t-forecast__strip--enter .t-forecast__hour,
+  html:not(.force-motion) .t-forecast__strip--enter .t-forecast__pop::after,
+  html:not(.force-motion) .t-analog__hand,
+  html:not(.force-motion) #content.is-entering,
+  html:not(.force-motion) #fade.blur-in,
+  html:not(.force-motion) .shimmer--run::after {
+    animation: none;
+  }
+
+  /* No meteors, and dots that cannot move are just specks, so they go too. */
+  html:not(.force-motion) #meteors,
+  html:not(.force-motion) .wx-orbit {
+    display: none;
+  }
+
+  html:not(.force-motion) #content.is-leaving {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  /* Relocation still happens (burn-in protection), just without the fade. */
+  html:not(.force-motion) #fade {
+    transition: none;
+  }
+}

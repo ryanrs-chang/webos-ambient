@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Ambient</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="backdrop"></div>
+    <canvas id="effects"></canvas>
+    <div id="meteors"></div>
+    <div id="stage"><div id="fade"><div id="content"></div></div></div>
+    <div
+      id="hint"
+      aria-live="polite"
+      class="pointer-events-none fixed bottom-14 left-1/2 -translate-x-1/2 rounded-[999px] border border-line bg-[#0d0d0d] px-9 py-3 text-tv-32 tracking-[0.05em] text-fg opacity-0 transition-opacity duration-400 ease-[ease] [&.show]:opacity-100"
+    ></div>
+    <!-- Classic script, not a module: packaged webOS apps load from file://, where module scripts are blocked. -->
+    <script src="main.js"></script>
+  </body>
+</html>

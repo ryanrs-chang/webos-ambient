@@ -1,0 +1,28 @@
+diff --git a/lib/dir-writer.js b/lib/dir-writer.js
+index ec50dca900dcf41e3a77aca22ac2948951e5dda4..9bf067aaee530a4e454990cde56007e433d929a2 100644
+--- a/lib/dir-writer.js
++++ b/lib/dir-writer.js
+@@ -9,6 +9,9 @@ module.exports = DirWriter
+ var Writer = require('./writer.js')
+ var inherits = require('inherits')
+ var mkdir = require('mkdirp')
++// mkdirp >= 2 is promise-based; adapt it to the callback form used below
++var mkdirp = mkdir
++mkdir = function (p, mode, cb) { mkdirp.mkdirp(p, mode).then(function (made) { cb(null, made) }, cb) }
+ var path = require('path')
+ var collect = require('./collect.js')
+ 
+diff --git a/lib/writer.js b/lib/writer.js
+index 3f10547820fad9bc4410133e04908612ab723193..fb3fee83f65124263f2602c3286884be46968e19 100644
+--- a/lib/writer.js
++++ b/lib/writer.js
+@@ -4,6 +4,9 @@ var fs = require('graceful-fs')
+ var inherits = require('inherits')
+ var rimraf = require('rimraf')
+ var mkdir = require('mkdirp')
++// mkdirp >= 2 is promise-based; adapt it to the callback form used below
++var mkdirp = mkdir
++mkdir = function (p, mode, cb) { mkdirp.mkdirp(p, mode).then(function (made) { cb(null, made) }, cb) }
+ var path = require('path')
+ var umask = process.platform === 'win32' ? 0 : process.umask()
+ var getType = require('./get-type.js')

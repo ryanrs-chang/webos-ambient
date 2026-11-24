@@ -1,0 +1,7 @@
+node_modules/
+dist/
+app/main.js
+.DS_Store
+app/style.css
+config.local.json
+.impeccable/

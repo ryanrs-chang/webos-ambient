@@ -1,0 +1,12 @@
+{
+  "id": "dev.ryanrs.ambient",
+  "version": "0.1.0",
+  "vendor": "ryanrs",
+  "type": "web",
+  "main": "index.html",
+  "title": "Ambient",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "bgColor": "#000000",
+  "resolution": "1920x1080"
+}

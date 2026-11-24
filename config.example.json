@@ -1,0 +1,8 @@
+{
+  "$comment": "Copy to config.local.json (gitignored) or run `bun run setup`. place: name shown beside the weather. latitude: -90..90. longitude: -180..180 (one decimal, about 11 km, is enough for a forecast). timeZone: an IANA zone such as Europe/London. haBaseUrl: reserved for a future Home Assistant link; leave empty.",
+  "place": "Greenwich",
+  "latitude": 51.48,
+  "longitude": 0.01,
+  "timeZone": "Europe/London",
+  "haBaseUrl": ""
+}

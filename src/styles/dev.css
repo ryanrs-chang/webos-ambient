@@ -1,0 +1,16 @@
+/* Dev only: ?freeze=1 (src/freeze.ts) makes the page deterministic for screenshots. Nothing moves, and the weather
+   canvas (random particles) is hidden. Never set on the TV. */
+
+html.freeze *,
+html.freeze *::before,
+html.freeze *::after {
+  /* biome-ignore lint/complexity/noImportantStyles: must beat the ID selectors (#stage, #fade) of the rules it stops */
+  animation: none !important;
+  /* biome-ignore lint/complexity/noImportantStyles: same */
+  transition: none !important;
+}
+
+html.freeze #effects,
+html.freeze #meteors {
+  display: none;
+}

@@ -1,0 +1,57 @@
+/* What the themes' utility classes cannot say (src/themes/*). Layout, spacing, type size and colour live in the
+   markup as utilities; the BEM class on each element stays as the hook the rules here and the tests use. */
+
+/* Shared weather states. .weather--loading sits below the utilities on purpose: a weather line has its own text-fg. */
+
+.weather--loading {
+  color: var(--color-fg-faint);
+}
+
+.weather.stale {
+  opacity: 0.5;
+}
+
+/* Forecast, current conditions: a named-area grid (the rest of the grid is utilities on the element). */
+
+.t-forecast__now {
+  grid-template-areas:
+    "place icon"
+    "temp icon"
+    "label icon"
+    "feels humidity";
+}
+
+.t-forecast__place {
+  grid-area: place;
+}
+
+.t-forecast__temp {
+  grid-area: temp;
+}
+
+.t-forecast__icon {
+  grid-area: icon;
+}
+
+.t-forecast__label {
+  grid-area: label;
+}
+
+.t-forecast__feels {
+  grid-area: feels;
+}
+
+.t-forecast__humidity {
+  grid-area: humidity;
+}
+
+/* Thin precipitation bar: the track is the full chance range (utilities), the fill is --pop percent. */
+
+.t-forecast__pop::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--pop, 0) * 1%);
+  background: var(--color-accent);
+  transform-origin: left center;
+}

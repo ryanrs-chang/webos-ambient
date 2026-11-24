@@ -1,0 +1,32 @@
+/* Design tokens. `static` emits every variable even when no utility uses it, because the hand-written CSS in
+   this folder reads them with var(). Utilities: text-fg, text-fg-dim, border-line, bg-accent, text-tv-40, font-sans ... */
+
+@theme static {
+  /* 1 spacing unit = 4px, in px not rem, so the TV's root font size can never change a gap (gap-6 = 24px). */
+  --spacing: 4px;
+
+  --color-fg: #bdbdbd;
+  --color-fg-dim: #7a7a7a;
+  --color-fg-faint: #4a4a4a;
+  --color-line: #2a2a2a;
+  --color-accent: #6b8cae;
+
+  --font-sans: "LG Smart UI", "Noto Sans TC", "PingFang TC", sans-serif;
+  /* The dev panel (desktop browser only) uses the system UI font instead. */
+  --font-ui: system-ui, sans-serif;
+
+  /* TV type sizes, named by their pixel value (1920x1080 layout). Font size only, no line height. */
+  --text-tv-30: 30px;
+  --text-tv-32: 32px;
+  --text-tv-36: 36px;
+  --text-tv-40: 40px;
+  --text-tv-44: 44px;
+  --text-tv-48: 48px;
+  --text-tv-52: 52px;
+  --text-tv-56: 56px;
+  --text-tv-72: 72px;
+  --text-tv-140: 140px;
+  --text-tv-220: 220px;
+  --text-tv-260: 260px;
+  --text-tv-300: 300px;
+}
