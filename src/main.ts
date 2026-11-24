@@ -26,10 +26,12 @@ import {
   writeFancy,
   writeForceMotion,
 } from "./devpanel";
+import { effectPlan, startCinematic } from "./effects/cinematic";
 import { startMeteors } from "./effects/meteors";
-import { effectIntensity, startEffects } from "./effects/particles";
+import { type Daypart, type EffectKind, effectIntensity, startEffects } from "./effects/particles";
 import { startShimmer } from "./effects/shimmer";
 import { parseFreeze } from "./freeze";
+import { type BridgeHost, startKeepAwake } from "./keepAwake";
 import { themeIndex, themes } from "./themes";
 import { describeWeather, type Forecast, fetchForecast } from "./weather";
 
@@ -61,6 +63,8 @@ const effectsCanvas = byId("effects") as HTMLCanvasElement;
 effectsCanvas.width = window.innerWidth;
 effectsCanvas.height = window.innerHeight;
 const effects = startEffects(effectsCanvas);
+// The cinematic theme draws on the same canvas instead of `effects`; see syncEffects (one engine at a time).
+const cinematicFx = startCinematic(effectsCanvas);
 const meteorsLayer = byId("meteors");
 
 const launch = parseLaunchParams(window.PalmSystem?.launchParams, location.search);
@@ -123,6 +127,8 @@ function applyFancy(flags: FancyFlags): void {
 /** Meteors and shimmer are decoration: not under reduced motion, not in ?freeze=1 screenshots. */
 const meteors = startMeteors(meteorsLayer, () => fancy.meteors && !reducedMotion() && !freeze.frozen);
 startShimmer(content, () => fancy.shimmer && !reducedMotion() && !freeze.frozen);
+// Veto the TV's idle screen saver (it hands over to Always Ready); a no-op outside webOS.
+startKeepAwake(window as unknown as BridgeHost);
 
 /**
  * Burn-in protection: the stage sits still at a zone anchor (see relocate), on whole pixels. Called at start,
@@ -154,7 +160,7 @@ function currentRange(): Offset {
 }
 
 /**
- * Burn-in protection: every few minutes (at :30 past the minute, away from the :00 digit roll) the block fades
+ * Burn-in protection: every minute (at :30 past the minute, away from the :00 digit roll) the block fades
  * out, jumps to another zone while invisible, and fades back in. The fade is on #fade, its own layer, so it
  * does not touch #stage's --dim opacity or #content's theme-switch animations. Reduced motion relocates at once.
  */
@@ -222,23 +228,30 @@ function shownForecast(): Forecast | null {
 
 /**
  * The effect follows the forecast in every theme (dimmer on the black ones, see effectIntensity); none until
- * there is a forecast. Only the backdrop tint stays ambient-only.
+ * there is a forecast. Only the backdrop tint stays ambient-only. Exactly one engine draws on #effects
+ * (effectPlan): the cinematic theme's scene (src/effects/cinematic.ts) or the regular particles, never both, and
+ * the meteors only with the particles. An engine told "none" clears the canvas, so the idle one is stopped
+ * first. The cinematic scene is off under reduced motion and in ?freeze=1, not frozen on one frame.
  */
 function syncEffects(): void {
-  const intensity = effectIntensity(themes[prefs.themeIndex].id);
+  const themeId = themes[prefs.themeIndex].id;
+  const intensity = effectIntensity(themeId);
+  const plan = effectPlan(themeId, reducedMotion() || freeze.frozen);
   const shown = shownForecast();
+  let kind: EffectKind = "none";
+  let daypart: Daypart = "night";
   if (shown) {
-    const kind = describeWeather(shown.current.code).kind;
-    const daypart = shown.current.isDay ? "day" : "night";
-    effects.setWeather(kind, daypart, intensity);
-    meteors.setWeather(kind, daypart, intensity);
+    kind = describeWeather(shown.current.code).kind;
+    daypart = shown.current.isDay ? "day" : "night";
   } else if (fxOverride) {
-    effects.setWeather(fxOverride.kind, fxOverride.daypart, intensity);
-    meteors.setWeather(fxOverride.kind, fxOverride.daypart, intensity);
-  } else {
-    effects.setWeather("none", "night");
-    meteors.setWeather("none", "night");
+    ({ kind, daypart } = fxOverride);
   }
+  if (plan.engine !== "particles") effects.setWeather("none", "night");
+  if (plan.engine !== "cinematic") cinematicFx.setWeather("none", "night");
+  if (plan.engine === "particles") effects.setWeather(kind, daypart, intensity);
+  if (plan.engine === "cinematic") cinematicFx.setWeather(kind, daypart, intensity);
+  if (plan.meteors) meteors.setWeather(kind, daypart, intensity);
+  else meteors.setWeather("none", "night");
 }
 
 function render(force = false): void {

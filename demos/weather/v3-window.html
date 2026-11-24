@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Weather v3 Window</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#8a93a0;
+  font-family:"LG Smart UI","Noto Sans TC","PingFang TC",-apple-system,"Helvetica Neue",sans-serif}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;overflow:hidden;background:#000}
+#clock{position:absolute;font-weight:200;letter-spacing:.02em;line-height:1;color:#8a93a0;font-variant-numeric:tabular-nums;white-space:nowrap}
+#date{position:absolute;font-weight:300;font-size:40px;letter-spacing:.08em;color:#5d6572;white-space:nowrap}
+#ui{position:absolute;left:0;right:0;bottom:22px;display:flex;justify-content:center;gap:10px;z-index:50;transition:opacity .4s}
+#ui button{font:inherit;font-size:24px;color:#6b7482;background:rgba(255,255,255,.03);border:1px solid #232830;
+  border-radius:10px;padding:8px 22px;cursor:pointer}
+#ui button.on{color:#c3cad6;border-color:#4a5463;background:rgba(255,255,255,.09)}
+#ui button:focus-visible{outline:2px solid #6f8fbf}
+#fps{position:absolute;left:16px;top:12px;font:20px/1 ui-monospace,Menlo,monospace;color:#4d5562;z-index:50;transition:opacity .4s}
+#hint{position:absolute;right:16px;top:12px;font-size:18px;color:#3b424d;z-index:50}
+body.ui-off #ui,body.ui-off #fps,body.ui-off #hint{opacity:0}
+
+/* the canvas renders at 960x540 and is scaled 2x: glass is soft anyway, and it is 4x cheaper */
+#fx{position:absolute;left:0;top:0;width:1920px;height:1080px}
+#clock{left:130px;top:330px;font-size:270px}
+#date{left:140px;top:640px}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="fx" width="960" height="540"></canvas>
+
+  <div id="clock"></div><div id="date"></div>
+  <div id="fps">-- fps</div><div id="hint">1-8 / ← → switch · H hide UI</div>
+  <div id="ui"></div>
+</div>
+
+<script>
+/* Shared shell: scaling, clock, kind switcher, FPS meter. Inlined into every prototype. */
+const KINDS=[
+  {id:'clear-day',zh:'晴(日)'},{id:'clear-night',zh:'晴(夜)'},{id:'partly',zh:'多雲'},{id:'overcast',zh:'陰'},
+  {id:'rain',zh:'雨'},{id:'storm',zh:'雷雨'},{id:'snow',zh:'雪'},{id:'fog',zh:'霧'}];
+const Shell=(()=>{
+  const $=s=>document.querySelector(s);
+  const stage=$('#stage');
+  function fit(){const s=Math.min(innerWidth/1920,innerHeight/1080);
+    stage.style.transform='translate('+(innerWidth-1920*s)/2+'px,'+(innerHeight-1080*s)/2+'px) scale('+s+')';}
+  addEventListener('resize',fit);fit();
+  // clock: HH:MM only (no seconds, OLED rule)
+  const clk=$('#clock'),dateEl=$('#date');
+  function tick(){const d=new Date();
+    const t=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    if(clk.textContent!==t)clk.textContent=t;
+    if(dateEl){const s=d.toLocaleDateString('zh-TW',{month:'long',day:'numeric',weekday:'long'});
+      if(dateEl.textContent!==s)dateEl.textContent=s;}}
+  tick();setInterval(tick,1000);
+  // switcher
+  let cur=null,hook=()=>{};
+  const ui=$('#ui');
+  KINDS.forEach((k,i)=>{const b=document.createElement('button');b.textContent=(i+1)+' '+k.zh;b.dataset.k=k.id;
+    b.onclick=()=>set(k.id);ui.appendChild(b);});
+  function set(id){
+    if(!KINDS.some(k=>k.id===id))id='rain';
+    cur=id;ui.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.k===id));
+    try{history.replaceState(null,'','#'+id)}catch(e){}
+    document.documentElement.dataset.kind=id;hook(id);}
+  addEventListener('keydown',e=>{
+    const i=KINDS.findIndex(k=>k.id===cur);
+    if(e.key>='1'&&e.key<='8')set(KINDS[+e.key-1].id);
+    else if(e.key==='ArrowRight')set(KINDS[(i+1)%8].id);
+    else if(e.key==='ArrowLeft')set(KINDS[(i+7)%8].id);
+    else if(e.key==='h'||e.key==='H')document.body.classList.toggle('ui-off');});
+  // fps meter: counts frames that were actually drawn, and JS time spent per frame
+  const fpsEl=$('#fps');const m={n:0,ms:0,t0:performance.now()};
+  window.__stats={fps:0,ms:0,kind:null};
+  function meter(now,cost){m.n++;m.ms+=cost;
+    if(now-m.t0>=1000){const fps=m.n*1000/(now-m.t0),ms=m.ms/m.n;
+      fpsEl.textContent=fps.toFixed(0)+' fps · '+ms.toFixed(1)+' ms';
+      window.__stats={fps,ms,kind:cur};m.n=0;m.ms=0;m.t0=now;}}
+  /** Frame loop capped at `fps` (default 30). draw(dt seconds, t seconds). */
+  function loop(draw,fps){
+    const iv=1000/(fps||30);let last=performance.now();
+    function f(now){requestAnimationFrame(f);
+      if(now-last<iv-3)return;
+      const dt=Math.min((now-last)/1000,.1);last=now;
+      const a=performance.now();draw(dt,now/1000);
+      meter(now,performance.now()-a);}
+    requestAnimationFrame(f);}
+  function init(onKind){
+    hook=onKind;
+    const q=new URLSearchParams(location.search).get('k')||location.hash.slice(1);
+    set(q||'rain');
+    if(new URLSearchParams(location.search).has('clean'))document.body.classList.add('ui-off');}
+  return{init,loop,set,kind:()=>cur};
+})();
+
+/* v3 Window: a dim scene "outside" (bokeh lights, sky) seen through glass.
+   Layers: blurred outside (1/4 res upscaled) + a "reveal" layer that holds the sharp scene wherever a drop has wiped the glass
+   + refracting drops (a flipped, magnified patch of the sharp scene, cached per drop). All original code. */
+(()=>{
+const W=960,H=540,TAU=Math.PI*2,BW=W/4,BH=H/4;
+const cv=document.getElementById('fx'),ctx=cv.getContext('2d');
+const R=Math.random,rr=(a,b)=>a+R()*(b-a);
+const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
+const mid=mk(W/2,H/2),mg=mid.getContext('2d'),sharp=mk(W,H),sg=sharp.getContext('2d'),blur=mk(BW,BH),bgx=blur.getContext('2d'),reveal=mk(W,H),rg=reveal.getContext('2d');
+ctx.imageSmoothingQuality='high';mg.imageSmoothingQuality='high';bgx.imageSmoothingQuality='high';
+
+const CFG={
+ 'clear-day':{limit:22,rate:.5,grow:.08,heal:.06,veil:.03,bokeh:16,tone:'warm',lum:.95,sky:'sun'},
+ 'clear-night':{limit:26,rate:.7,grow:.08,heal:.05,veil:.04,bokeh:36,tone:'mixed',lum:1,sky:'moon'},
+ 'partly':{limit:30,rate:1,grow:.1,heal:.06,veil:.04,bokeh:26,tone:'warm',lum:1,sky:'clouds',sun:true},
+ 'overcast':{limit:46,rate:2.5,grow:.2,heal:.06,veil:.06,bokeh:26,tone:'mixed',lum:1,sky:'clouds'},
+ 'rain':{limit:170,rate:14,grow:.5,heal:.10,veil:.07,bokeh:44,tone:'mixed',lum:1,sky:'clouds',dark:true},
+ 'storm':{limit:230,rate:22,grow:.6,heal:.12,veil:.08,bokeh:30,tone:'cool',lum:1,sky:'clouds',dark:true,storm:true},
+ 'snow':{limit:45,rate:1.2,grow:.15,heal:.04,veil:.10,bokeh:28,tone:'cool',lum:1,sky:'clouds',frost:true,flakes:true},
+ 'fog':{limit:70,rate:5,grow:.25,heal:.05,veil:.12,bokeh:16,tone:'mixed',lum:.9,sky:'fog'}};
+const COLORS={warm:[[255,190,110],[255,165,90],[255,215,150]],cool:[[150,190,255],[190,215,255],[170,200,240]],
+  mixed:[[255,190,110],[150,190,255],[255,110,100],[140,230,170],[255,215,150]]};
+// soft bokeh sprites, one per colour
+const bokehSpr={};
+function bsp(rgb){const k=rgb.join();if(bokehSpr[k])return bokehSpr[k];const s=64,c=mk(s,s),g=c.getContext('2d');
+  const gr=g.createRadialGradient(32,32,0,32,32,31);gr.addColorStop(0,'rgba('+k+',.55)');gr.addColorStop(.72,'rgba('+k+',.75)');gr.addColorStop(.94,'rgba('+k+',.2)');gr.addColorStop(1,'rgba('+k+',0)');
+  g.fillStyle=gr;g.fillRect(0,0,s,s);return bokehSpr[k]=c;}
+const flakeSpr=(()=>{const c=mk(24,24),g=c.getContext('2d'),gr=g.createRadialGradient(12,12,0,12,12,11);
+  gr.addColorStop(0,'rgba(235,242,255,.9)');gr.addColorStop(.5,'rgba(235,242,255,.4)');gr.addColorStop(1,'rgba(235,242,255,0)');g.fillStyle=gr;g.fillRect(0,0,24,24);return c;})();
+const frostSpr=(()=>{const c=mk(W,H),g=c.getContext('2d');g.lineCap='round';
+  for(let i=0;i<650;i++){ // fern-like crystals, denser towards the frame
+    let x=R()*W,y=R()*H;const ed=Math.min(x,W-x,y,H-y)/ (H/2);if(R()>Math.pow(1-Math.min(1,ed),1.6)+.03){i--;continue;}
+    const a=R()*TAU,l=rr(6,26);g.strokeStyle='rgba(205,222,245,'+rr(.08,.22)+')';g.lineWidth=rr(.6,1.2);
+    g.beginPath();g.moveTo(x,y);g.lineTo(x+Math.cos(a)*l,y+Math.sin(a)*l);
+    for(let k=1;k<4;k++){const px=x+Math.cos(a)*l*k/4,py=y+Math.sin(a)*l*k/4;
+      g.moveTo(px,py);g.lineTo(px+Math.cos(a+.9)*l*.35,py+Math.sin(a+.9)*l*.35);g.moveTo(px,py);g.lineTo(px+Math.cos(a-.9)*l*.35,py+Math.sin(a-.9)*l*.35);}
+    g.stroke();}
+  return c;})();
+function blob(g,x,y,rx,ry,rgb,a){g.save();g.translate(x,y);g.scale(1,ry/rx);const gr=g.createRadialGradient(0,0,0,0,0,rx);
+  gr.addColorStop(0,'rgba('+rgb+','+a+')');gr.addColorStop(1,'rgba('+rgb+',0)');g.fillStyle=gr;g.beginPath();g.arc(0,0,rx,0,TAU);g.fill();g.restore();}
+
+let kind='',cfg=CFG.rain,fade=0,T=0,drops=[],bokeh=[],cl=[],stars=[],flakes=[],flash=null,nextBolt=0,bolt=null,lastBake=-9,lastHeal=0;
+
+function setKind(k){
+  kind=k;cfg=CFG[k];fade=0;drops=[];flash=null;bolt=null;nextBolt=T+rr(3,6);
+  rg.clearRect(0,0,W,H);
+  const cols=COLORS[cfg.tone];
+  bokeh=Array.from({length:cfg.bokeh},()=>({x:R()*W,y:rr(H*.5,H*.97),r:rr(5,17),c:cols[(R()*cols.length)|0],a:rr(.22,.5),vx:rr(-2,2),ph:R()*TAU}));
+  cl=Array.from({length:cfg.sky==='clouds'?9:0},()=>({x:R()*W,y:rr(0,H*.38),rx:rr(80,190),ry:rr(22,44),a:cfg.dark?rr(.12,.22):rr(.07,.15),vx:rr(2,6)}));
+  stars=k==='clear-night'?Array.from({length:110},()=>({x:R()*W,y:R()*H*.6,a:rr(.3,.8),f:rr(.5,2),ph:R()*TAU})):[];
+  flakes=cfg.flakes?Array.from({length:70},()=>({x:R()*W,y:R()*H,r:rr(1.5,4.5),s:rr(14,40),ph:R()*TAU})):[];
+  const n=Math.round(cfg.limit*.55);bake();for(let i=0;i<n;i++)drops.push(newDrop(null));
+  drops.forEach(d=>bakeDrop(d));
+}
+function newDrop(r,x,y){return{x:x??R()*W,y:y??R()*H*.97,r:r||(R()<.14?rr(4.5,7.5):rr(1.7,3.8)),mode:0,v:0,vt:0,hold:0,ph:R()*TAU,tr:0,
+  spr:mk(40,48),br:0,bt:-99,moving:false};}
+function bake(){
+  const g=sg;g.globalAlpha=1;g.clearRect(0,0,W,H);
+  if(cfg.sky==='sun'||cfg.sun){const f=cfg.sun?.65:1;blob(g,740+10*Math.sin(T/30),105,230,230,'255,200,120',.30*f);blob(g,740,105,52,52,'255,232,190',.5*f);}
+  if(cfg.sky==='moon'){blob(g,730,110,120,120,'200,215,240',.22);g.fillStyle='rgba(215,224,240,.55)';g.beginPath();g.arc(730,110,20,0,TAU);g.fill();}
+  stars.forEach(s=>{g.fillStyle='rgba(225,235,255,'+(s.a*(.55+.45*Math.sin(T*s.f+s.ph)))+')';g.fillRect(s.x|0,s.y|0,1.4,1.4);});
+  cl.forEach(c=>blob(g,c.x,c.y,c.rx,c.ry,cfg.dark?'110,128,160':'170,185,210',c.a));
+  if(cfg.sky==='fog'){[.35,.55,.75].forEach((y,i)=>blob(g,W*(.3+.2*i)+25*Math.sin(T/20+i),H*y,420,70,'190,200,215',.14));}
+  bokeh.forEach(b=>{b.x+=b.vx*.5;if(b.x<-20)b.x=W+20;if(b.x>W+20)b.x=-20;
+    g.globalAlpha=b.a*(.8+.2*Math.sin(T*.7+b.ph));g.drawImage(bsp(b.c),b.x-b.r,b.y-b.r,b.r*2,b.r*2);});
+  g.globalAlpha=1;mg.clearRect(0,0,W/2,H/2);mg.drawImage(sharp,0,0,W/2,H/2);bgx.clearRect(0,0,BW,BH);bgx.drawImage(mid,0,0,BW,BH);
+}
+// refraction: a flipped, magnified patch of the sharp scene inside the drop, plus rim and highlight
+function bakeDrop(d){
+  const rx=d.r*.92,ry=d.r*1.15,w=Math.ceil(rx*2)+4,h=Math.ceil(ry*2)+4,cx=w/2,cy=h/2,g=d.spr.getContext('2d');
+  g.clearRect(0,0,40,48);d.w=w;d.h=h;
+  g.save();g.beginPath();g.ellipse(cx,cy,rx,ry,0,0,TAU);g.clip();
+  const mag=1.9,sw=rx*2/mag,sh=ry*2/mag;
+  g.fillStyle='rgba(150,170,200,.07)';g.fillRect(0,0,w,h);
+  g.save();g.translate(cx,cy);g.scale(1,-1);g.globalAlpha=.95;
+  g.drawImage(sharp,d.x-sw/2,d.y+ry*.3-sh/2,sw,sh,-rx,-ry,rx*2,ry*2);g.restore();
+  const gr=g.createRadialGradient(cx,cy,Math.min(rx,ry)*.45,cx,cy,Math.max(rx,ry));gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,.5)');
+  g.fillStyle=gr;g.fillRect(0,0,w,h);g.restore();
+  g.lineWidth=1;g.strokeStyle='rgba(205,220,245,.26)';g.beginPath();g.ellipse(cx,cy,rx-.4,ry-.4,0,.15*Math.PI,.85*Math.PI);g.stroke();   // lit lower rim
+  g.fillStyle='rgba(255,255,255,.35)';g.beginPath();g.arc(cx-rx*.35,cy-ry*.45,Math.max(.6,d.r*.16),0,TAU);g.fill();                   // highlight
+  d.br=d.r;d.bt=T;
+}
+function wipe(x,y,r){ // reveal the sharp scene under a moving drop
+  rg.save();rg.beginPath();rg.arc(x,y,r,0,TAU);rg.clip();const s=r*2+2;rg.drawImage(sharp,x-r-1,y-r-1,s,s,x-r-1,y-r-1,s,s);rg.restore();}
+function startSlide(d){d.mode=1;d.hold=0;d.moving=false;d.v=0;d.vt=0;d.tr=0;}
+
+function frame(dt,tAbs){
+  T=tAbs;fade=Math.min(1,fade+dt/1.4);
+  if(T-lastBake>.5){cl.forEach(c=>{c.x+=c.vx*.5;if(c.x>W+200)c.x=-200;});bake();lastBake=T;}
+  // gentle self-healing of the glass: the wiped area slowly mists over again
+  if(T-lastHeal>1){rg.globalCompositeOperation='destination-out';rg.fillStyle='rgba(0,0,0,'+cfg.heal+')';rg.fillRect(0,0,W,H);rg.globalCompositeOperation='source-over';lastHeal=T;}
+  // spawn / churn
+  if(drops.length<cfg.limit&&R()<cfg.rate*dt)drops.push(newDrop(null,undefined,rr(-4,H*.8)));
+  let budget=4;
+  for(let i=drops.length-1;i>=0;i--){const d=drops[i];
+    if(d.mode===0){
+      d.r+=cfg.grow*dt*rr(.1,1)*(d.r<5.6?1:.3);
+      if(d.r>=5.6&&R()<dt*.9||d.r>3.4&&R()<dt*.012*cfg.grow*8)startSlide(d);
+      else if(R()<dt*.02&&drops.length>cfg.limit*.6){drops.splice(i,1);continue;}  // evaporate
+      if(Math.abs(d.r-d.br)>.3||(T-d.bt>8&&budget>0)){bakeDrop(d);budget--;}
+    }else{
+      d.hold-=dt;
+      if(d.hold<=0){d.moving=!d.moving;d.hold=d.moving?rr(.4,1.4):rr(.25,.9);d.vt=d.moving?rr(.5,1)*(28+d.r*14):0;}
+      d.v+=(d.vt-d.v)*Math.min(1,dt*6);
+      const dy=d.v*dt;
+      if(dy>.05){
+        for(let s=0,n=Math.ceil(dy/(d.r*.6));s<n;s++){d.y+=dy/n;wipe(d.x,d.y,d.r*.8);}
+        d.x+=Math.sin(d.y*.05+d.ph)*dt*4;d.r-=dy*.0034;d.tr+=dy;
+        if(d.tr>rr(12,24)&&drops.length<cfg.limit+40){d.tr=0;drops.push(newDrop(rr(.9,1.8),d.x+rr(-.8,.8),d.y-d.r));}
+        bakeDrop(d);
+      }
+      if(d.y>H+12){drops.splice(i,1);continue;}
+      if(d.r<2.2){d.mode=0;d.r=Math.max(d.r,1.6);}
+    }
+  }
+  // ---- compose ----
+  ctx.globalAlpha=1;ctx.clearRect(0,0,W,H);ctx.globalAlpha=fade*cfg.lum;
+  ctx.drawImage(blur,0,0,W,H);
+  ctx.fillStyle='rgba(150,165,185,'+cfg.veil+')';ctx.fillRect(0,0,W,H);          // condensation veil
+  if(flakes.length){ctx.globalAlpha=.3*fade;flakes.forEach(f=>{f.y+=f.s*dt;f.x+=Math.sin(T*.6+f.ph)*10*dt+8*dt;if(f.y>H+6){f.y=-6;f.x=R()*W;}
+    ctx.drawImage(flakeSpr,f.x-f.r*2,f.y-f.r*2,f.r*4,f.r*4);});ctx.globalAlpha=fade*cfg.lum;}
+  if(cfg.frost){ctx.globalAlpha=(.55+.15*Math.sin(T*.3))*fade;ctx.drawImage(frostSpr,0,0);ctx.globalAlpha=fade*cfg.lum;}
+  ctx.drawImage(reveal,0,0);
+  for(let i=0;i<drops.length;i++){const d=drops[i];ctx.drawImage(d.spr,0,0,d.w,d.h,(d.x-d.w/2)|0,(d.y-d.h/2)|0,d.w,d.h);}
+  // lightning behind the glass: a soft bolt plus a brief double-pulse flash (<= 10%)
+  if(cfg.storm){
+    if(!flash&&T>nextBolt){flash={t:0};const bx=rr(150,W-250);bolt=[[bx,0]];let x=bx,y=0;while(y<rr(190,260)){x+=rr(-22,22);y+=rr(14,30);bolt.push([x,y]);}}
+    if(flash){flash.t+=dt;const t=flash.t;
+      const a=t<.06?.10*t/.06:t<.14?.10-.06*(t-.06)/.08:t<.22?.04+.06*(t-.14)/.08:t<.6?.10*Math.max(0,1-(t-.22)/.38):0;
+      if(t>=.6){flash=null;bolt=null;nextBolt=T+rr(7,16);}
+      else{ctx.globalAlpha=a*fade;ctx.fillStyle='rgb(205,218,255)';ctx.fillRect(0,0,W,H);
+        if(t<.35){const k=Math.max(0,1-(t-.1)/.25);ctx.strokeStyle='rgb(225,232,255)';ctx.lineJoin='round';
+          [[6,.10],[1.6,.4]].forEach(([w,al])=>{ctx.globalAlpha=al*k*fade;ctx.lineWidth=w;ctx.beginPath();bolt.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.stroke();});}}}}
+  ctx.globalAlpha=1;
+}
+Shell.init(k=>setKind(k));
+Shell.loop(frame,30);
+})();
+</script>
+</body>
+</html>

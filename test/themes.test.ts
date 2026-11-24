@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ambient } from "../src/themes/ambient";
 import { analog } from "../src/themes/analog";
+import { cinematic } from "../src/themes/cinematic";
 import { forecast as forecastTheme } from "../src/themes/forecast";
 import { nextThemeIndex, themeIndex, themes } from "../src/themes/index";
 import { minimal } from "../src/themes/minimal";
@@ -44,12 +45,13 @@ describe("helpers", () => {
 });
 
 describe("registry", () => {
-  test("themes are ordered minimal, forecast, analog, ambient with their zh-TW names", () => {
+  test("themes are ordered minimal, forecast, analog, ambient, cinematic with their zh-TW names", () => {
     expect(themes.map((t) => [t.id, t.name])).toEqual([
       ["minimal", "極簡"],
       ["forecast", "今日預報"],
       ["analog", "指針"],
       ["ambient", "氛圍"],
+      ["cinematic", "電影感"],
     ]);
   });
 
@@ -61,12 +63,12 @@ describe("registry", () => {
   });
 
   test("nextThemeIndex wraps in both directions", () => {
-    expect(nextThemeIndex(0, 1, 4)).toBe(1);
-    expect(nextThemeIndex(3, 1, 4)).toBe(0);
-    expect(nextThemeIndex(0, -1, 4)).toBe(3);
-    expect(nextThemeIndex(2, -1, 4)).toBe(1);
-    expect(nextThemeIndex(1, 5, 4)).toBe(2);
-    expect(nextThemeIndex(1, -6, 4)).toBe(3);
+    expect(nextThemeIndex(0, 1, 5)).toBe(1);
+    expect(nextThemeIndex(4, 1, 5)).toBe(0);
+    expect(nextThemeIndex(0, -1, 5)).toBe(4);
+    expect(nextThemeIndex(2, -1, 5)).toBe(1);
+    expect(nextThemeIndex(1, 5, 5)).toBe(1);
+    expect(nextThemeIndex(1, -6, 5)).toBe(0);
   });
 });
 
@@ -75,6 +77,7 @@ const rootClass: Record<string, string> = {
   forecast: "t-forecast",
   analog: "t-analog",
   ambient: "t-ambient",
+  cinematic: "t-cinematic",
 };
 
 describe.each(themes.map((t): [string, Theme] => [t.id, t]))("%s theme", (id, theme) => {
@@ -264,6 +267,36 @@ describe("ambient", () => {
     const out = text(ambient.render(state({ forecast: f })));
     expect(out).not.toContain("日出");
     expect(out).not.toContain("日落");
+  });
+});
+
+describe("cinematic", () => {
+  test("shows place, temperature, label and the day's range on one compact line", () => {
+    expect(text(cinematic.render(state()))).toContain("Testville 16° 陰 · 16°–19°");
+  });
+
+  test("has no icon, no orbit dots and no rain chance: the scene behind is the weather", () => {
+    const html = cinematic.render(state());
+    expect(html).not.toContain("<svg");
+    expect(html).not.toContain("wx-orbit");
+    expect(text(html)).not.toContain("降雨");
+  });
+
+  test("is one content-sized column (the one-minute relocation moves it), not a full-screen layer", () => {
+    const html = cinematic.render(state());
+    expect(html).toMatch(/^<div class="t-cinematic flex flex-col items-center/);
+    expect(html).not.toMatch(/\b(fixed|absolute|w-screen|h-screen|w-full|h-full)\b/);
+  });
+
+  test("the clock is the big thin one, the date sits under it", () => {
+    const html = cinematic.render(state());
+    expect(html).toMatch(/class="t-cinematic__time [^"]*\btext-tv-300\b[^"]*\bfont-extralight\b/);
+    expect(html.indexOf("t-cinematic__time")).toBeLessThan(html.indexOf("t-cinematic__date"));
+    expect(html.indexOf("t-cinematic__date")).toBeLessThan(html.indexOf("t-cinematic__weather"));
+  });
+
+  test("is not tinted: no data-kind, so the ambient backdrop stays off", () => {
+    expect(cinematic.render(state())).not.toContain("data-kind");
   });
 });
 

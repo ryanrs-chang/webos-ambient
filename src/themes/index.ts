@@ -1,10 +1,11 @@
 import { ambient } from "./ambient";
 import { analog } from "./analog";
+import { cinematic } from "./cinematic";
 import { forecast } from "./forecast";
 import { minimal } from "./minimal";
 import type { Theme } from "./types";
 
-export const themes: Theme[] = [minimal, forecast, analog, ambient];
+export const themes: Theme[] = [minimal, forecast, analog, ambient, cinematic];
 
 /** Position of `id` in `themes`; an unknown id uses `fallbackId`, and an unknown fallback uses the first theme. */
 export function themeIndex(id: string | undefined, fallbackId: string): number {

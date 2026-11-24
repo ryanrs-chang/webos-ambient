@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Weather v2 Animated icons</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#8a93a0;
+  font-family:"LG Smart UI","Noto Sans TC","PingFang TC",-apple-system,"Helvetica Neue",sans-serif}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;overflow:hidden;background:#000}
+#clock{position:absolute;font-weight:200;letter-spacing:.02em;line-height:1;color:#8a93a0;font-variant-numeric:tabular-nums;white-space:nowrap}
+#date{position:absolute;font-weight:300;font-size:40px;letter-spacing:.08em;color:#5d6572;white-space:nowrap}
+#ui{position:absolute;left:0;right:0;bottom:22px;display:flex;justify-content:center;gap:10px;z-index:50;transition:opacity .4s}
+#ui button{font:inherit;font-size:24px;color:#6b7482;background:rgba(255,255,255,.03);border:1px solid #232830;
+  border-radius:10px;padding:8px 22px;cursor:pointer}
+#ui button.on{color:#c3cad6;border-color:#4a5463;background:rgba(255,255,255,.09)}
+#ui button:focus-visible{outline:2px solid #6f8fbf}
+#fps{position:absolute;left:16px;top:12px;font:20px/1 ui-monospace,Menlo,monospace;color:#4d5562;z-index:50;transition:opacity .4s}
+#hint{position:absolute;right:16px;top:12px;font-size:18px;color:#3b424d;z-index:50}
+body.ui-off #ui,body.ui-off #fps,body.ui-off #hint{opacity:0}
+
+:root{--tint:#0b1220}
+[data-kind=clear-day]{--tint:#1a1608}[data-kind=clear-night]{--tint:#0a0e1c}[data-kind=partly]{--tint:#10131a}
+[data-kind=overcast]{--tint:#0e1014}[data-kind=rain]{--tint:#0a111c}[data-kind=storm]{--tint:#0d0c1a}
+[data-kind=snow]{--tint:#10161e}[data-kind=fog]{--tint:#12151a}
+/* ambient tint: very dark (<= #1a2333), a slow breathing aura behind the icon */
+#aura{position:absolute;left:60px;top:140px;width:800px;height:800px;border-radius:50%;
+  background:radial-gradient(closest-side,var(--tint),rgba(0,0,0,0));opacity:.9;animation:breathe 14s ease-in-out infinite}
+#icon{position:absolute;left:160px;top:240px;width:600px;height:600px;animation:float 9s ease-in-out infinite}
+#icon img{position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity 1.6s ease}
+#icon img.show{opacity:.5}      /* dim the vivid Meteocons colours: opacity is compositor-only, cheaper than filter */
+#clock{left:880px;top:330px;font-size:300px}
+#date{left:890px;top:660px}
+#label{position:absolute;left:890px;top:730px;font-size:34px;font-weight:300;letter-spacing:.2em;color:#4d5562}
+@keyframes float{0%,100%{transform:translateY(-10px)}50%{transform:translateY(10px)}}
+@keyframes breathe{0%,100%{opacity:.55}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  html:not(.force-motion) #icon,html:not(.force-motion) #aura{animation:none}
+  html:not(.force-motion) #icon img{transition:none}
+}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="aura"></div>
+  <div id="icon"><img id="ic0" alt=""><img id="ic1" alt=""></div>
+  <div id="label"></div>
+
+  <div id="clock"></div><div id="date"></div>
+  <div id="fps">-- fps</div><div id="hint">1-8 / ← → switch · H hide UI</div>
+  <div id="ui"></div>
+</div>
+
+<script>
+/* Shared shell: scaling, clock, kind switcher, FPS meter. Inlined into every prototype. */
+const KINDS=[
+  {id:'clear-day',zh:'晴(日)'},{id:'clear-night',zh:'晴(夜)'},{id:'partly',zh:'多雲'},{id:'overcast',zh:'陰'},
+  {id:'rain',zh:'雨'},{id:'storm',zh:'雷雨'},{id:'snow',zh:'雪'},{id:'fog',zh:'霧'}];
+const Shell=(()=>{
+  const $=s=>document.querySelector(s);
+  const stage=$('#stage');
+  function fit(){const s=Math.min(innerWidth/1920,innerHeight/1080);
+    stage.style.transform='translate('+(innerWidth-1920*s)/2+'px,'+(innerHeight-1080*s)/2+'px) scale('+s+')';}
+  addEventListener('resize',fit);fit();
+  // clock: HH:MM only (no seconds, OLED rule)
+  const clk=$('#clock'),dateEl=$('#date');
+  function tick(){const d=new Date();
+    const t=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    if(clk.textContent!==t)clk.textContent=t;
+    if(dateEl){const s=d.toLocaleDateString('zh-TW',{month:'long',day:'numeric',weekday:'long'});
+      if(dateEl.textContent!==s)dateEl.textContent=s;}}
+  tick();setInterval(tick,1000);
+  // switcher
+  let cur=null,hook=()=>{};
+  const ui=$('#ui');
+  KINDS.forEach((k,i)=>{const b=document.createElement('button');b.textContent=(i+1)+' '+k.zh;b.dataset.k=k.id;
+    b.onclick=()=>set(k.id);ui.appendChild(b);});
+  function set(id){
+    if(!KINDS.some(k=>k.id===id))id='rain';
+    cur=id;ui.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.k===id));
+    try{history.replaceState(null,'','#'+id)}catch(e){}
+    document.documentElement.dataset.kind=id;hook(id);}
+  addEventListener('keydown',e=>{
+    const i=KINDS.findIndex(k=>k.id===cur);
+    if(e.key>='1'&&e.key<='8')set(KINDS[+e.key-1].id);
+    else if(e.key==='ArrowRight')set(KINDS[(i+1)%8].id);
+    else if(e.key==='ArrowLeft')set(KINDS[(i+7)%8].id);
+    else if(e.key==='h'||e.key==='H')document.body.classList.toggle('ui-off');});
+  // fps meter: counts frames that were actually drawn, and JS time spent per frame
+  const fpsEl=$('#fps');const m={n:0,ms:0,t0:performance.now()};
+  window.__stats={fps:0,ms:0,kind:null};
+  function meter(now,cost){m.n++;m.ms+=cost;
+    if(now-m.t0>=1000){const fps=m.n*1000/(now-m.t0),ms=m.ms/m.n;
+      fpsEl.textContent=fps.toFixed(0)+' fps · '+ms.toFixed(1)+' ms';
+      window.__stats={fps,ms,kind:cur};m.n=0;m.ms=0;m.t0=now;}}
+  /** Frame loop capped at `fps` (default 30). draw(dt seconds, t seconds). */
+  function loop(draw,fps){
+    const iv=1000/(fps||30);let last=performance.now();
+    function f(now){requestAnimationFrame(f);
+      if(now-last<iv-3)return;
+      const dt=Math.min((now-last)/1000,.1);last=now;
+      const a=performance.now();draw(dt,now/1000);
+      meter(now,performance.now()-a);}
+    requestAnimationFrame(f);}
+  function init(onKind){
+    hook=onKind;
+    const q=new URLSearchParams(location.search).get('k')||location.hash.slice(1);
+    set(q||'rain');
+    if(new URLSearchParams(location.search).has('clean'))document.body.classList.add('ui-off');}
+  return{init,loop,set,kind:()=>cur};
+})();
+
+/* v2: Meteocons (MIT, Bas Milius) animated SVGs vendored in ./vendor/meteocons. The SVGs animate themselves with SMIL. */
+(()=>{
+if(new URLSearchParams(location.search).has('motion'))document.documentElement.classList.add('force-motion');
+const FILE={'clear-day':'clear-day','clear-night':'clear-night','partly':'partly-cloudy-day','overcast':'overcast',
+  'rain':'rain','storm':'thunderstorms-rain','snow':'snow','fog':'fog'};
+const imgs=[document.getElementById('ic0'),document.getElementById('ic1')],label=document.getElementById('label');
+let front=0;
+function show(k){
+  const next=imgs[1-front],prev=imgs[front];
+  next.src='vendor/meteocons/'+FILE[k]+'.svg';
+  next.classList.add('show');prev.classList.remove('show');front=1-front;
+  label.textContent=(KINDS.find(x=>x.id===k)||{}).zh||'';}
+Shell.init(show);
+// the icon animates itself; the loop only drives the FPS meter
+Shell.loop(()=>{},60);
+})();
+</script>
+</body>
+</html>

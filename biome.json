@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/dist", "!app/main.js", "!app/style.css", "!test/fixtures"]
+    "includes": ["**", "!**/dist", "!app/main.js", "!app/style.css", "!test/fixtures", "!demos"]
   },
   "formatter": {
     "enabled": true,

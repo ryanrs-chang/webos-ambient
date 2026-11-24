@@ -227,4 +227,26 @@ describe("nextRelocationDelayMs", () => {
   test("default offset is half a minute", () => {
     expect(nextRelocationDelayMs(0, 60_000)).toBe(30_000);
   });
+
+  describe("with the default one-minute interval", () => {
+    const ONE = 60_000;
+
+    test("from any time the next relocation is the next :30 and the wait is in (0, 60 s]", () => {
+      // Odd step so the sample walks through every second and sub-second position of the minute.
+      for (let at = Date.UTC(2026, 10, 24, 10, 0, 0, 0); at < Date.UTC(2026, 10, 24, 10, 5, 0, 0); at += 977) {
+        const delay = nextRelocationDelayMs(at, ONE, OFFSET);
+        expect(delay).toBeGreaterThan(0);
+        expect(delay).toBeLessThanOrEqual(ONE);
+        const t = new Date(at + delay);
+        expect(t.getUTCSeconds()).toBe(30);
+        expect(t.getUTCMilliseconds()).toBe(0);
+      }
+    });
+
+    test("at :29.999 it is 1 ms away, at :30.000 a whole minute", () => {
+      const minute = Date.UTC(2026, 10, 24, 10, 7, 0, 0);
+      expect(nextRelocationDelayMs(minute + 29_999, ONE, OFFSET)).toBe(1);
+      expect(nextRelocationDelayMs(minute + 30_000, ONE, OFFSET)).toBe(ONE);
+    });
+  });
 });

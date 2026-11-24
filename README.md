@@ -1,8 +1,8 @@
 # webos-ambient
 
-A packaged webOS web app for an LG OLED TV (built for a C6, 1920x1080): a clock and the local weather, on screen all day. Black background, no seconds, and the whole layout sits still on whole pixels (so the text stays sharp) and, every few minutes, fades out and reappears in another region of the screen, to protect the panel from burn-in.
+A packaged webOS web app for an LG OLED TV (built for a C6, 1920x1080): a clock and the local weather, on screen all day. Black background, no seconds, and the whole layout sits still on whole pixels (so the text stays sharp) and, every minute, fades out and reappears in another region of the screen, to protect the panel from burn-in.
 
-The forecast comes from [Open-Meteo](https://open-meteo.com/) (no API key). Place, coordinates and time zone come from your own `config.local.json` (see Configuration below); the refresh interval is in `src/config.ts`. All of it is bundled at build time, and so are the burn-in settings: `floatMarginPx` (default 40, the border the content keeps from the screen edge) and the zone relocation. The screen's free area is a 3x3 grid dealt like a shuffled deck, so every region is visited once per nine relocations and never the same one twice in a row. `relocateMinutes` (default 3) is the interval, `relocateOffsetSec` (default 30) the second past the minute it happens at (so it never lands on the :00 digit roll) and `relocateFadeMs` (default 1200) the length of the fade out and of the fade back in. Between relocations the block does not move at all: a continuous drift left the text blurry on the TV. With the system "reduce motion" setting it still relocates, but without the fade.
+The forecast comes from [Open-Meteo](https://open-meteo.com/) (no API key). Place, coordinates and time zone come from your own `config.local.json` (see Configuration below); the refresh interval is in `src/config.ts`. All of it is bundled at build time, and so are the burn-in settings: `floatMarginPx` (default 40, the border the content keeps from the screen edge) and the zone relocation. The screen's free area is a 3x3 grid dealt like a shuffled deck, so every region is visited once per nine relocations and never the same one twice in a row. `relocateMinutes` (default 1) is the interval, `relocateOffsetSec` (default 30) the second past the minute it happens at (so it never lands on the :00 digit roll) and `relocateFadeMs` (default 1200) the length of the fade out and of the fade back in. Between relocations the block does not move at all: a continuous drift left the text blurry on the TV. With the system "reduce motion" setting it still relocates, but without the fade.
 
 ## Screenshots
 
@@ -19,7 +19,7 @@ Captured headless at 1920x1080 and downscaled to 1280x720, from the bundled fore
   </tr>
 </table>
 
-Effects (not frozen, so the particles and meteors move; the layout jumps to a different spot on the screen every few minutes, as it does all day):
+Effects (not frozen, so the particles and meteors move; the layout jumps to a different spot on the screen every minute, as it does all day):
 
 ![Rain effect in the Ambient theme](docs/screenshots/rain.png)
 
@@ -54,20 +54,30 @@ Leak guard: `bun run check:secrets` (also part of `bun test`) fails if your lati
 
 ## Themes and remote keys
 
-| Theme    | id         | Shows                                                        |
-| -------- | ---------- | ------------------------------------------------------------ |
-| 極簡     | `minimal`  | Large clock, date, one weather line                          |
-| 今日預報 | `forecast` | Clock, current conditions, 12-hour strip with rain chance    |
-| 指針     | `analog`   | Analog face, time, date, weather line                        |
-| 氛圍     | `ambient`  | Clock on a very dark tint that follows weather and day/night |
+| Theme    | id          | Shows                                                                  |
+| -------- | ----------- | ---------------------------------------------------------------------- |
+| 極簡     | `minimal`   | Large clock, date, one weather line                                    |
+| 今日預報 | `forecast`  | Clock, current conditions, 12-hour strip with rain chance              |
+| 指針     | `analog`    | Analog face, time, date, weather line                                  |
+| 氛圍     | `ambient`   | Clock on a very dark tint that follows weather and day/night           |
+| 電影感   | `cinematic` | Big thin clock, date, one weather line, over a layered film-like scene |
 
-| Key          | Action                        |
-| ------------ | ----------------------------- |
-| Left / Right | Previous / next theme         |
-| Up / Down    | Brightness +/- 10% (30%-100%) |
-| OK           | Show the current theme name   |
+| Key          | Action                              |
+| ------------ | ----------------------------------- |
+| Left / Right | Previous / next theme (wraps round) |
+| Up / Down    | Brightness +/- 10% (30%-100%)       |
+| OK           | Show the current theme name         |
 
 Every theme animates the weather on a canvas behind the clock (`src/effects/particles.ts`): rain and storm streaks (a storm adds a rare, very soft flash), snow, twinkling stars on clear nights, faint light rays on clear days, layered, flat-bottomed clouds drifting slowly for cloudy and fog (fog as wider, lower bands), and partly cloudy as its own thing (a few clouds with light rays by day, or about 40 stars with clouds by night). The effect follows the forecast's current weather and day/night; without a forecast nothing animates. It is deliberately dim and OLED-safe: peak alpha per kind is capped (0.12 to 0.7, thin particles and soft clouds only), nothing stays put (stars respawn elsewhere every 1 to 3 minutes), and it is capped at about 30 fps. 氛圍 shows it at full strength (and is the only theme with the tinted backdrop); the pure-black themes (極簡, 今日預報, 指針) show it at the same strength (an earlier 60% was invisible on a real TV).
+
+### 電影感 (cinematic)
+
+The fifth theme, for when the others get boring: the same clock and weather, but the scene behind it is a richer canvas one, ported from the `v1-cinematic` demo (see Demos below), in `src/effects/cinematic.ts`. Rain in three depth layers with ground splashes, layered drifting clouds, swaying fog bands, three-layer snow with wind gusts, twinkling stars with a dim moon and a shooting star, a soft sun with two counter-rotating ray layers and dust motes, and a double-pulse lightning flash with a thin bolt. All timings are realistic, not the demo's: lightning every 20 to 60 s (storm only), a shooting star every 15 to 45 s (clear or partly cloudy night only). It follows the forecast like the other themes (and the dev panel's weather selector / `?fx=`).
+
+- **One engine at a time.** While this theme is active its scene draws on the `#effects` canvas _instead of_ the regular particles scene, and the meteors layer is off (it has its own shooting star); switching to any other theme restores both.
+- **Dim.** Alpha caps (times the usual intensity): rain 0.40, clouds 0.18, fog 0.20, snow 0.55, stars 0.70, lightning flash 0.10, shooting star 0.45.
+- **Reduced motion and `?freeze=1`:** the scene is off (an empty canvas, not a frozen frame: a still sun glow would sit on the panel all day). The clock and weather line are unaffected. The dev panel's 強制動畫 turns it back on.
+- The text is a normal content-sized block, so the one-minute zone relocation moves it like every other theme.
 
 ### Fancy effects
 
@@ -125,6 +135,10 @@ On a desktop browser (http/https on `localhost`, `127.0.0.1` or `::1`) a small p
 
 Add `?dev=1` to get it on another host (e.g. a phone on the LAN) and `?dev=0` to hide it on localhost. `PORT=5174 bun scripts/serve.ts` runs a second dev server on another port.
 
+## Demos
+
+`demos/weather/` holds four standalone weather-scene demos that were built before the app themes (open `demos/weather/index.html`; no build). They are reference material, kept for later: excluded from lint and from the build, and not part of the packaged app. 電影感 is the first one ported into a theme. See [`demos/weather/README.md`](demos/weather/README.md) for what each is, their status and how to port another.
+
 ## Install on the TV
 
 1. On the TV, install the **Developer Mode** app from the LG Content Store and sign in with an LG developer account. Turn Dev Mode Status on and the Key Server on.
@@ -140,6 +154,25 @@ bun run launch:tv    # ares-launch -d tv dev.ryanrs.ambient
 `bun run inspect:tv` opens the remote DevTools.
 
 Developer Mode sessions expire. When the session lapses the TV removes sideloaded apps, so renew it in the Developer Mode app (and reinstall if the app is gone).
+
+## Keeping the TV on the app (screen saver / Always Ready)
+
+After a few idle minutes a webOS OLED starts its screen saver, and on recent models (webOS 24+) that hands over to Always Ready, so a clock that nobody touches would be replaced. webOS has no public per-app switch and no `requiredPermissions` entry for this; `src/keepAwake.ts` uses the undocumented tvpower screen-saver vote that Kodi, RetroArch and several webOS media apps use:
+
+1. subscribe to `luna://com.webos.service.tvpower/power/registerScreenSaverRequest` (`{subscribe: true, clientName}`);
+2. each time the TV is about to start the saver it publishes a message with a `timestamp`;
+3. answer it with `luna://com.webos.service.tvpower/power/responseScreenSaverRequest` and `{clientName, ack: false, timestamp}`.
+
+It runs once at start, logs `[keepAwake] ...` lines to the console (`bun run inspect:tv`), never throws, and is a no-op in a desktop browser (no service bridge). Keeping the screen on is acceptable here because the content relocates every minute (burn-in protection above).
+
+`appinfo.json` has no `requiredACG`: per LG's [ACG guide](https://webostv.developer.lge.com/develop/guides/acg-guide) the field is unsupported up to webOS TV 25, optional on 26 (adding it turns enforcement on) and mandatory from 27, and none of its listed groups covers tvpower, so declaring `[]` could make the call fail. `ares-package` therefore still prints a warning about it. If webOS 27 requires it and the call is then refused, the console line `tvpower refused: ...` is where it shows.
+
+What the app cannot override, because they are user settings or firmware:
+
+- **Auto Power Off** (Settings > General > System > Time & Timer, a 4 hour no-input timer on some regions and models) switches the TV off; Always Ready may then show. Turn it off in that menu if the TV should stay on all day.
+- **Energy Saving** (Settings > General > Energy Saving / Eco) dims or blanks the screen on its own timers.
+- **Always Ready** (Settings > General > Always Ready) is the TV's own off-state; it can be disabled there.
+- Any remote key, an input switch or the TV's own timers can still leave the app.
 
 ## Launch from Home Assistant
 

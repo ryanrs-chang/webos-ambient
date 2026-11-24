@@ -42,7 +42,7 @@ export const defaultConfig: Config = {
   defaultTheme: "minimal",
   weatherUrl: "https://api.open-meteo.com/v1/forecast",
   floatMarginPx: 40,
-  relocateMinutes: 3,
+  relocateMinutes: 1,
   relocateOffsetSec: 30,
   relocateFadeMs: 1200,
 };

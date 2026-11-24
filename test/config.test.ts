@@ -61,8 +61,8 @@ describe("defaultConfig placement settings", () => {
 });
 
 describe("defaultConfig relocation settings", () => {
-  test("relocates every 3 minutes at :30 past the minute, fading over 1.2 s", () => {
-    expect(defaultConfig.relocateMinutes).toBe(3);
+  test("relocates every minute at :30 past the minute, fading over 1.2 s", () => {
+    expect(defaultConfig.relocateMinutes).toBe(1);
     expect(defaultConfig.relocateOffsetSec).toBe(30);
     expect(defaultConfig.relocateFadeMs).toBe(1200);
   });

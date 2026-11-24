@@ -55,9 +55,13 @@ describe("buildPanelModel", () => {
   test("one entry per theme with its id and name, only the current one active", () => {
     const model = buildPanelModel(themes, 2);
     expect(model).toHaveLength(themes.length);
-    expect(model.map((m) => m.id)).toEqual(["minimal", "forecast", "analog", "ambient"]);
-    expect(model.map((m) => m.name)).toEqual(["極簡", "今日預報", "指針", "氛圍"]);
-    expect(model.map((m) => m.active)).toEqual([false, false, true, false]);
+    expect(model.map((m) => m.id)).toEqual(["minimal", "forecast", "analog", "ambient", "cinematic"]);
+    expect(model.map((m) => m.name)).toEqual(["極簡", "今日預報", "指針", "氛圍", "電影感"]);
+    expect(model.map((m) => m.active)).toEqual([false, false, true, false, false]);
+  });
+
+  test("the cinematic theme gets its own button, last, and can be the active one", () => {
+    expect(buildPanelModel(themes, 4).map((m) => m.active)).toEqual([false, false, false, false, true]);
   });
 
   test("an out-of-range index activates nothing", () => {

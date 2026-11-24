@@ -1,4 +1,4 @@
-// OLED burn-in protection. Nothing a theme draws may stay on the same pixels for hours, so every few minutes
+// OLED burn-in protection. Nothing a theme draws may stay on the same pixels for hours, so every minute
 // the content block fades out and reappears in another region of the screen. Between relocations it sits still
 // on a whole-pixel position: a continuous drift left the text mid-transition at sub-pixel offsets, which looked
 // blurry on the TV.
@@ -21,7 +21,7 @@ export function floatRange(viewport: Size, content: Size, margin: number): Offse
   };
 }
 
-// Zone relocation. Every few minutes the block fades out and reappears in a different region. The 3x3 grid is
+// Zone relocation. Every minute the block fades out and reappears in a different region. The 3x3 grid is
 // dealt like a shuffled deck (a "bag"), so over nine relocations every region is visited exactly once.
 
 export type Rng = () => number;
