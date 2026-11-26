@@ -50,7 +50,7 @@ Where the TV is (place name, coordinates, time zone) is personal, so it is never
 | `haToken`    | Optional Home Assistant long-lived access token (a secret; inlined into `app/main.js`) |
 | `haEntities` | Optional list of entity ids to subscribe to, e.g. `["sensor.indoor_co2"]`              |
 
-Home Assistant (spike): with all three `ha*` keys set, `src/ha.ts` connects to HA's WebSocket API, authenticates, subscribes to `haEntities` (`subscribe_entities`) and reconnects with backoff (5 s doubling to 5 min; a rejected token stops it). For now it only logs `[ha] <entity> = <state>` to the console (see it with `inspect:tv`); nothing is drawn from it yet.
+Home Assistant: with all three `ha*` keys set, `src/ha.ts` connects to HA's WebSocket API, authenticates, subscribes to `haEntities` (`subscribe_entities`) and reconnects with backoff (5 s doubling to 5 min; a rejected token stops it). Every theme draws the readings under the weather (temperature, humidity, CO₂, PM2.5, each entity classified by its `device_class` or unit), with a band word such as 有點悶 or 偏濕 from the thresholds in `src/indoor.ts`.
 
 Gitignored and so never published: `config.local.json`, and the build output `app/main.js` (which contains your values) and `app/style.css`. Committed: `config.example.json` (neutral placeholder values) and everything else, including tuning such as `refreshMinutes` and the burn-in settings, which stay in `src/config.ts`.
 

@@ -1,4 +1,5 @@
 import type { Config } from "../config";
+import type { Indoor } from "../indoor";
 import type { Forecast } from "../weather";
 
 /** What the renderer remembers between renders so motion happens once, not on every rebuild of #content. */
@@ -15,6 +16,8 @@ export interface ViewState {
   /** The last fetch failed; the forecast on screen is older than it should be. */
   stale: boolean;
   config: Config;
+  /** Home Assistant indoor readings; absent or null hides the indoor line. */
+  indoor?: Indoor | null;
   anim?: AnimState;
 }
 

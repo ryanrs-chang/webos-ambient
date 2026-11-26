@@ -1,6 +1,7 @@
 import { timeHtml } from "../anim";
 import { formatDate, formatHour, formatTime } from "../clock";
 import { ICON_CLASS, weatherIcon } from "../icons";
+import { indoorLine } from "../indoor";
 import { describeWeather, type HourPoint } from "../weather";
 import { deg, esc, LOADING, type Theme, type ViewState, weatherClass } from "./types";
 
@@ -62,6 +63,7 @@ export const forecast: Theme = {
       current(state) +
       `</div>` +
       strip +
+      indoorLine(state.indoor, "text-tv-32 justify-end") +
       `</div>`
     );
   },

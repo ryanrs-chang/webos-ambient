@@ -334,3 +334,17 @@ describe("fancy effect hooks", () => {
     expect(minimal.render(state({ forecast: null }))).not.toContain("wx-orbit");
   });
 });
+
+describe("indoor line", () => {
+  test.each(themes.map((t) => [t.id, t] as const))(
+    "%s shows indoor readings only when there are some",
+    (_id, theme: Theme) => {
+      const indoor = { temp: 23.4, co2: 640 };
+      const shown = text(theme.render(state({ indoor })));
+      expect(shown).toContain("室內 23.4°");
+      expect(shown).toContain("CO₂ 640 ppm");
+      expect(theme.render(state())).not.toContain("indoor");
+      expect(theme.render(state({ indoor: null }))).not.toContain('class="indoor');
+    },
+  );
+});
