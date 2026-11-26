@@ -3,12 +3,22 @@ import type { UserConfig } from "../src/userConfig";
 
 export type SetupFlags = Partial<Record<keyof UserConfig, string>>;
 
+/** "a.b, c.d" -> ["a.b", "c.d"]; an empty string is an empty list. */
+export function splitList(s: string): string[] {
+  return s
+    .split(",")
+    .map((x) => x.trim())
+    .filter((x) => x !== "");
+}
+
 const FLAGS: Record<string, keyof UserConfig> = {
   "--place": "place",
   "--lat": "latitude",
   "--lon": "longitude",
   "--tz": "timeZone",
   "--ha-base-url": "haBaseUrl",
+  "--ha-token": "haToken",
+  "--ha-entities": "haEntities",
 };
 
 export function parseSetupArgs(argv: string[]): SetupFlags {
@@ -36,5 +46,7 @@ export function applyFlags(base: UserConfig, flags: SetupFlags): Record<string, 
   if (flags.longitude !== undefined) out.longitude = toNumber(flags.longitude);
   if (flags.timeZone !== undefined) out.timeZone = flags.timeZone;
   if (flags.haBaseUrl !== undefined) out.haBaseUrl = flags.haBaseUrl;
+  if (flags.haToken !== undefined) out.haToken = flags.haToken.trim();
+  if (flags.haEntities !== undefined) out.haEntities = splitList(flags.haEntities);
   return out;
 }

@@ -10,11 +10,17 @@ export interface UserConfig {
   longitude: number;
   /** IANA zone, e.g. "Europe/London". */
   timeZone: string;
-  /** Reserved for a future Home Assistant link; empty means none. */
+  /** Home Assistant, e.g. "http://ha.example:8123"; empty means no Home Assistant link. */
   haBaseUrl: string;
+  /** A Home Assistant long-lived access token; empty means none. A secret: it is inlined into the bundle. */
+  haToken: string;
+  /** Entity ids to subscribe to, e.g. ["sensor.indoor_co2"]. */
+  haEntities: string[];
 }
 
-const KEYS = ["place", "latitude", "longitude", "timeZone", "haBaseUrl"] as const;
+const KEYS = ["place", "latitude", "longitude", "timeZone", "haBaseUrl", "haToken", "haEntities"] as const;
+
+const ENTITY_ID = /^[a-z0-9_]+\.[a-z0-9_]+$/;
 
 function isValidTimeZone(tz: string): boolean {
   try {
@@ -69,8 +75,26 @@ export function parseUserConfig(raw: unknown): UserConfig {
     } else errors.push(`"haBaseUrl" must be empty or an http(s) URL (got ${describe(obj.haBaseUrl)})`);
   }
 
+  let haToken = "";
+  if (obj.haToken !== undefined) {
+    if (typeof obj.haToken === "string" && /^\S*$/.test(obj.haToken)) haToken = obj.haToken;
+    // Never echo the value: it is a secret.
+    else errors.push('"haToken" must be a string without spaces');
+  }
+
+  let haEntities: string[] = [];
+  if (obj.haEntities !== undefined) {
+    if (Array.isArray(obj.haEntities) && obj.haEntities.every((e) => typeof e === "string" && ENTITY_ID.test(e))) {
+      haEntities = [...new Set(obj.haEntities as string[])];
+    } else {
+      errors.push(
+        `"haEntities" must be a list of entity ids such as "sensor.indoor_co2" (got ${describe(obj.haEntities)})`,
+      );
+    }
+  }
+
   if (errors.length > 0) {
     throw new Error(`Invalid config (fix config.local.json, or run \`bun run setup\`):\n  - ${errors.join("\n  - ")}`);
   }
-  return { place, latitude, longitude, timeZone, haBaseUrl };
+  return { place, latitude, longitude, timeZone, haBaseUrl, haToken, haEntities };
 }

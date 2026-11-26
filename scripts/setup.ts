@@ -21,8 +21,17 @@ const PROMPTS: { key: keyof UserConfig; label: string }[] = [
   { key: "latitude", label: "Latitude (-90..90)" },
   { key: "longitude", label: "Longitude (-180..180)" },
   { key: "timeZone", label: "IANA time zone (e.g. Europe/London)" },
-  { key: "haBaseUrl", label: "Home Assistant base URL (optional, unused for now; empty for none)" },
+  { key: "haBaseUrl", label: "Home Assistant base URL (optional; empty for none)" },
+  { key: "haToken", label: "Home Assistant long-lived access token (optional)" },
+  { key: "haEntities", label: "Home Assistant entity ids, comma-separated (optional)" },
 ];
+
+/** What the prompt shows as the current value: never the token itself. */
+function shown(config: UserConfig, key: keyof UserConfig): string {
+  if (key === "haToken") return config.haToken === "" ? "" : "set; Enter keeps it";
+  const v = config[key];
+  return Array.isArray(v) ? v.join(",") : String(v);
+}
 
 async function interactive(base: UserConfig): Promise<UserConfig> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -30,7 +39,7 @@ async function interactive(base: UserConfig): Promise<UserConfig> {
   try {
     for (const { key, label } of PROMPTS) {
       for (;;) {
-        const answer = (await rl.question(`${label} [${config[key]}]: `)).trim();
+        const answer = (await rl.question(`${label} [${shown(config, key)}]: `)).trim();
         if (answer === "") break;
         try {
           config = parseUserConfig(applyFlags(config, { [key]: answer }));
@@ -55,7 +64,9 @@ try {
   } else if (process.stdin.isTTY) {
     config = await interactive(base);
   } else {
-    throw new Error("not a terminal: pass --place, --lat, --lon, --tz (and optionally --ha-base-url)");
+    throw new Error(
+      "not a terminal: pass --place, --lat, --lon, --tz (and optionally --ha-base-url, --ha-token, --ha-entities)",
+    );
   }
   await Bun.write(LOCAL_PATH, `${JSON.stringify(config, null, 2)}\n`);
   console.log("Wrote config.local.json");

@@ -5,7 +5,7 @@ const valid = { place: "Testville", latitude: 12.5, longitude: -45.25, timeZone:
 
 describe("parseUserConfig: valid input", () => {
   test("returns the four required keys", () => {
-    expect(parseUserConfig(valid)).toEqual({ ...valid, haBaseUrl: "" });
+    expect(parseUserConfig(valid)).toEqual({ ...valid, haBaseUrl: "", haToken: "", haEntities: [] });
   });
 
   test("trims the place", () => {
@@ -18,6 +18,16 @@ describe("parseUserConfig: valid input", () => {
 
   test("keeps an http(s) haBaseUrl", () => {
     expect(parseUserConfig({ ...valid, haBaseUrl: "http://ha.local:8123" }).haBaseUrl).toBe("http://ha.local:8123");
+  });
+
+  test("keeps the token and the entity list, deduplicated", () => {
+    const c = parseUserConfig({
+      ...valid,
+      haToken: "abc.def",
+      haEntities: ["sensor.co2", "weather.home", "sensor.co2"],
+    });
+    expect(c.haToken).toBe("abc.def");
+    expect(c.haEntities).toEqual(["sensor.co2", "weather.home"]);
   });
 
   test("accepts the range boundaries", () => {
@@ -54,6 +64,11 @@ describe("parseUserConfig: invalid input names the bad key", () => {
     { name: "empty timeZone", raw: { ...valid, timeZone: "" }, key: "timeZone" },
     { name: "haBaseUrl not a url", raw: { ...valid, haBaseUrl: "ha.local" }, key: "haBaseUrl" },
     { name: "haBaseUrl not a string", raw: { ...valid, haBaseUrl: 3 }, key: "haBaseUrl" },
+    { name: "haToken with a space", raw: { ...valid, haToken: "a b" }, key: "haToken" },
+    { name: "haToken not a string", raw: { ...valid, haToken: 1 }, key: "haToken" },
+    { name: "haEntities not a list", raw: { ...valid, haEntities: "sensor.co2" }, key: "haEntities" },
+    { name: "haEntities bad id", raw: { ...valid, haEntities: ["co2"] }, key: "haEntities" },
+    { name: "haEntities upper case", raw: { ...valid, haEntities: ["Sensor.CO2"] }, key: "haEntities" },
     { name: "unknown key (typo)", raw: { ...valid, lat: 1 }, key: "lat" },
   ];
 
@@ -62,6 +77,10 @@ describe("parseUserConfig: invalid input names the bad key", () => {
       expect(() => parseUserConfig(c.raw)).toThrow(`"${c.key}"`);
     });
   }
+
+  test("never echoes a bad token", () => {
+    expect(() => parseUserConfig({ ...valid, haToken: "secret value" })).not.toThrow("secret");
+  });
 
   test("lists every bad key in one message", () => {
     let msg = "";
