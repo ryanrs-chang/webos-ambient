@@ -1,6 +1,16 @@
 /* Base layer. Tailwind's preflight is not imported (see src/tailwind.css): it would change the body line height, make
    svg display:block and so on. This is the one reset the app has always had. */
 
+/* The bundled font (`bun run font`, scripts/build-font.ts): a Noto Sans TC subset with the wght axis, so the TV and a
+   desktop browser draw the same glyphs. Relative to app/style.css; loaded from the package, never the network. */
+@font-face {
+  font-family: "Ambient Sans";
+  src: url("fonts/ambient-sans.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+}
+
 :root {
   /* Brightness (0.3 to 1), set from src/main.ts. */
   --dim: 0.7;

@@ -11,6 +11,7 @@
     "setup": "bun scripts/setup.ts",
     "check:secrets": "bun scripts/check-secrets.ts",
     "dev": "bun run build && bun scripts/dev.ts",
+    "font": "bun scripts/build-font.ts",
     "icons": "rsvg-convert -w 80 -h 80 assets/icon.svg -o app/icon.png && rsvg-convert -w 130 -h 130 assets/icon.svg -o app/largeIcon.png",
     "package": "bun run build && rm -rf dist && mkdir dist && ares-package app -o dist",
     "install:tv": "ares-install -d tv dist/*.ipk",
