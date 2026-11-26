@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Home demo: indoor air + AI briefing</title>
+<style>
+/* Standalone mock (no build, no network): how Home Assistant data could sit in the themes. Mock data only. */
+@font-face{font-family:"Ambient Sans";src:url("../../app/fonts/ambient-sans.woff2") format("woff2");font-weight:100 900;font-display:block}
+html,body{margin:0;height:100%;background:#000;overflow:hidden}
+body{font-family:"Ambient Sans","LG Smart UI","Noto Sans TC","PingFang TC",sans-serif;color:#bdbdbd}
+#viewport{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#screen{position:relative;width:1920px;height:1080px;flex:none;background:#000;transform-origin:center;outline:1px solid #111}
+.stage{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
+.dim{color:#7a7a7a}.faint{color:#4a4a4a}
+.num{font-variant-numeric:tabular-nums}
+.warn{color:#b89a62}
+/* --- shared pieces --- */
+.indoor{display:flex;gap:40px;align-items:baseline;font-size:36px;color:#7a7a7a}
+.indoor b{font-weight:300;color:#bdbdbd}
+.indoor .k{font-size:28px;color:#4a4a4a;margin-right:10px}
+.brief{display:flex;gap:18px;align-items:flex-start;max-width:1200px;font-size:36px;line-height:1.5;color:#8f8f8f}
+.brief .spark{flex:none;width:28px;height:28px;margin-top:12px;opacity:.55}
+.brief .meta{display:block;font-size:24px;color:#4a4a4a;margin-top:6px}
+.brief.fresh .txt{animation:in 1.6s ease-out both}
+@keyframes in{from{opacity:0;filter:blur(6px)}to{opacity:1;filter:none}}
+.stale{opacity:.45}
+/* --- layout A: minimal + two lines --- */
+.a{display:flex;flex-direction:column;align-items:center;gap:24px;text-align:center}
+.a .time{font-size:300px;font-weight:200;line-height:1}
+.a .date{font-size:56px;color:#7a7a7a}
+.a .wx{font-size:40px;margin-top:20px}
+.a .wx .t{font-size:48px}
+.a .indoor{margin-top:8px}
+.a .brief{margin-top:18px;justify-content:center;text-align:left}
+/* --- layout B: forecast with an indoor column --- */
+.b{width:1450px;display:flex;flex-direction:column;gap:64px}
+.b .top{display:flex;justify-content:space-between;align-items:flex-start}
+.b .time{font-size:220px;font-weight:200;line-height:1}
+.b .date{font-size:48px;color:#7a7a7a;margin-top:16px}
+.b .now{display:grid;grid-template-columns:auto auto;gap:8px 40px;justify-items:end;align-items:baseline;text-align:right}
+.b .now .big{font-size:140px;font-weight:200;line-height:1.1}
+.b .now .lbl{font-size:44px}
+.b .now .s{font-size:32px;color:#7a7a7a}
+.b .row{display:grid;grid-template-columns:1fr auto;gap:64px;border-top:1px solid #222;padding-top:36px;align-items:start}
+.b .indoor{flex-direction:column;gap:14px;font-size:34px;text-align:right;align-items:flex-end}
+/* --- layout C: briefing first --- */
+.c{display:flex;flex-direction:column;gap:40px;width:1300px}
+.c .head{display:flex;align-items:baseline;gap:40px}
+.c .time{font-size:160px;font-weight:200;line-height:1}
+.c .date{font-size:44px;color:#7a7a7a}
+.c .brief{font-size:48px;line-height:1.55;max-width:none;color:#a0a0a0}
+.c .brief .spark{width:36px;height:36px;margin-top:20px}
+.c .foot{display:flex;justify-content:space-between;border-top:1px solid #222;padding-top:28px}
+.c .wx{font-size:36px;color:#7a7a7a}
+/* --- demo chrome (not part of the design) --- */
+#ui{position:fixed;left:12px;top:12px;z-index:5;display:flex;flex-wrap:wrap;gap:6px;font:13px system-ui,sans-serif;max-width:calc(100vw - 24px)}
+#ui button{background:#111;color:#999;border:1px solid #333;border-radius:6px;padding:5px 10px;cursor:pointer}
+#ui button.on{color:#eee;border-color:#777;background:#222}
+#ui span{color:#555;padding:5px 4px 0 10px}
+#ui.hidden{display:none}
+#note{position:fixed;left:12px;bottom:10px;font:12px system-ui,sans-serif;color:#555}
+#ui.hidden~#note{display:none}
+</style>
+</head>
+<body>
+<div id="ui"></div>
+<div id="viewport"><div id="screen"><div class="stage" id="stage"></div></div></div>
+<div id="note">Mock data · 1920x1080 scaled · keys: 1-3 layout, Q-T scenario, B replay briefing, H hide UI</div>
+<script>
+const SPARK = '<svg class="spark" viewBox="0 0 24 24" fill="none" stroke="#9a9a9a" stroke-width="1.4"><path d="M12 2.5c.6 4.7 2.8 6.9 7.5 7.5-4.7.6-6.9 2.8-7.5 7.5-.6-4.7-2.8-6.9-7.5-7.5 4.7-.6 6.9-2.8 7.5-7.5z"/><path d="M19 16.5c.25 1.8 1 2.6 2.8 2.8-1.8.25-2.6 1-2.8 2.8-.25-1.8-1-2.6-2.8-2.8 1.8-.25 2.6-1 2.8-2.8z"/></svg>';
+
+const SCENARIOS = {
+  normal: { name: "正常", wx: { place: "家", temp: 21, label: "晴時多雲", min: 17, max: 24, pop: 10, feels: 21, hum: 62 },
+    indoor: { temp: 23.4, hum: 55, co2: 640, pm: 8 }, at: "06:30",
+    brief: "今天晴時多雲，17 到 24 度，早晚偏涼，出門帶件薄外套。室內空氣不錯。" },
+  co2: { name: "CO₂ 偏高", wx: { place: "家", temp: 21, label: "晴時多雲", min: 17, max: 24, pop: 10, feels: 21, hum: 62 },
+    indoor: { temp: 24.8, hum: 58, co2: 1240, pm: 9 }, at: "21:12", warn: ["co2"],
+    brief: "客廳 CO₂ 到 1240 ppm 了，開個窗十分鐘會舒服很多。" },
+  pm: { name: "PM2.5 偏高", wx: { place: "家", temp: 19, label: "霧", min: 16, max: 22, pop: 0, feels: 19, hum: 80 },
+    indoor: { temp: 22.1, hum: 61, co2: 720, pm: 41 }, at: "07:45", warn: ["pm"],
+    brief: "外面起霧、室內 PM2.5 41，先別開窗，建議開清淨機。" },
+  rain: { name: "會下雨", wx: { place: "家", temp: 18, label: "陰", min: 16, max: 20, pop: 80, feels: 17, hum: 88 },
+    indoor: { temp: 22.6, hum: 66, co2: 680, pm: 6 }, at: "06:30",
+    brief: "下午三點後降雨機率 80%，記得帶傘。溼度偏高，衣服今天別晾外面。" },
+  stale: { name: "HA 斷線", wx: { place: "家", temp: 21, label: "晴時多雲", min: 17, max: 24, pop: 10, feels: 21, hum: 62 },
+    indoor: { temp: 23.4, hum: 55, co2: 640, pm: 8 }, at: "06:30", stale: true,
+    brief: "今天晴時多雲，17 到 24 度，早晚偏涼，出門帶件薄外套。室內空氣不錯。" },
+};
+const LAYOUTS = { a: "A 極簡＋兩行", b: "B 今日預報＋室內欄", c: "C 早報為主" };
+
+const q = new URLSearchParams(location.search);
+let layout = LAYOUTS[q.get("layout")] ? q.get("layout") : "a";
+let scenario = SCENARIOS[q.get("s")] ? q.get("s") : "normal";
+let fresh = true;
+
+const pad = (n) => String(n).padStart(2, "0");
+function clock() {
+  const d = new Date();
+  const days = "日一二三四五六";
+  return { time: `${pad(d.getHours())}:${pad(d.getMinutes())}`, date: `${d.getMonth() + 1}月${d.getDate()}日 星期${days[d.getDay()]}` };
+}
+const w = (s, key, html) => (s.warn?.includes(key) ? `<span class="warn">${html}</span>` : html);
+
+function indoorHtml(s) {
+  const i = s.indoor;
+  return `<div class="indoor num ${s.stale ? "stale" : ""}">` +
+    `<span><span class="k">室內</span><b>${i.temp.toFixed(1)}°</b> · ${i.hum}%</span>` +
+    `<span><span class="k">CO₂</span>${w(s, "co2", `<b>${i.co2}</b> ppm`)}</span>` +
+    `<span><span class="k">PM2.5</span>${w(s, "pm", `<b>${i.pm}</b>`)}</span>` +
+    `</div>`;
+}
+function briefHtml(s) {
+  const meta = s.stale ? `${s.at} 更新 · 家裡連線中斷` : `${s.at} 更新`;
+  return `<div class="brief ${fresh ? "fresh" : ""} ${s.stale ? "stale" : ""}">${SPARK}` +
+    `<div class="txt">${s.brief}<span class="meta">${meta}</span></div></div>`;
+}
+function wxLine(s) {
+  const x = s.wx;
+  return `<div class="wx">${x.place} <span class="t">${x.temp}°</span> <span class="dim">${x.label} · ${x.min}°–${x.max}° · 降雨 ${x.pop}%</span></div>`;
+}
+
+const RENDER = {
+  a(s, c) {
+    return `<div class="a"><div class="time num">${c.time}</div><div class="date">${c.date}</div>` +
+      wxLine(s) + indoorHtml(s) + briefHtml(s) + `</div>`;
+  },
+  b(s, c) {
+    const x = s.wx;
+    return `<div class="b"><div class="top"><div><div class="time num">${c.time}</div><div class="date">${c.date}</div></div>` +
+      `<div class="now"><span class="s" style="font-size:40px">${x.place}</span><span class="big">${x.temp}°</span>` +
+      `<span></span><span class="lbl">${x.label}</span>` +
+      `<span class="s">體感 ${x.feels}°</span><span class="s">濕度 ${x.hum}% · 降雨 ${x.pop}%</span></div></div>` +
+      `<div class="row">${briefHtml(s)}${indoorHtml(s)}</div></div>`;
+  },
+  c(s, c) {
+    return `<div class="c"><div class="head"><div class="time num">${c.time}</div><div class="date">${c.date}</div></div>` +
+      briefHtml(s) + `<div class="foot">${wxLine(s)}${indoorHtml(s)}</div></div>`;
+  },
+};
+
+function render() {
+  document.getElementById("stage").innerHTML = RENDER[layout](SCENARIOS[scenario], clock());
+  for (const b of document.querySelectorAll("#ui button")) b.classList.toggle("on", b.dataset.v === layout || b.dataset.v === scenario);
+}
+
+function ui() {
+  const el = document.getElementById("ui");
+  const add = (v, label, fn) => { const b = document.createElement("button"); b.textContent = label; b.dataset.v = v; b.onclick = fn; el.append(b); };
+  el.append(Object.assign(document.createElement("span"), { textContent: "版面" }));
+  for (const [k, name] of Object.entries(LAYOUTS)) add(k, name, () => { layout = k; fresh = true; render(); });
+  el.append(Object.assign(document.createElement("span"), { textContent: "情境" }));
+  for (const [k, s] of Object.entries(SCENARIOS)) add(k, s.name, () => { scenario = k; fresh = true; render(); });
+  add("", "重播早報", () => { fresh = false; render(); requestAnimationFrame(() => { fresh = true; render(); }); });
+}
+
+function fit() {
+  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  document.getElementById("screen").style.transform = `scale(${s})`;
+}
+
+addEventListener("resize", fit);
+addEventListener("keydown", (e) => {
+  const k = e.key.toLowerCase();
+  const lk = { 1: "a", 2: "b", 3: "c" }[k];
+  const sk = { q: "normal", w: "co2", e: "pm", r: "rain", t: "stale" }[k];
+  if (lk) { layout = lk; fresh = true; render(); }
+  else if (sk) { scenario = sk; fresh = true; render(); }
+  else if (k === "b") document.querySelector('#ui button[data-v=""]').click();
+  else if (k === "h") document.getElementById("ui").classList.toggle("hidden");
+});
+ui(); fit(); render();
+// Like the app: only the minute changes the clock; keep the briefing still (no re-animation).
+setInterval(() => { fresh = false; render(); }, 60_000);
+setTimeout(() => { fresh = false; }, 1700);
+</script>
+</body>
+</html>
