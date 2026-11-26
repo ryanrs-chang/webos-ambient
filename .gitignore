@@ -5,3 +5,4 @@ app/main.js
 app/style.css
 config.local.json
 .impeccable/
+.cache/
