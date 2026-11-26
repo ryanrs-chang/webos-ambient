@@ -1,6 +1,7 @@
 import { timeHtml } from "../anim";
 import { formatDate, formatTime } from "../clock";
 import { CINEMATIC_THEME_ID } from "../effects/cinematic";
+import { indoorLine } from "../indoor";
 import { describeWeather } from "../weather";
 import { deg, esc, LOADING, type Theme, type ViewState, weatherClass } from "./types";
 
@@ -39,6 +40,7 @@ export const cinematic: Theme = {
       `<div class="t-cinematic__time text-tv-300 font-extralight leading-none tracking-[0.02em] tabular-nums">${timeHtml(formatTime(now, config.timeZone), state.anim?.prevTime ?? null)}</div>` +
       `<div class="t-cinematic__date shimmer text-tv-40 tracking-[0.08em] text-fg-dim">${esc(formatDate(now, config.timeZone))}</div>` +
       weatherLine(state) +
+      indoorLine(state.indoor, "text-tv-32 tracking-[0.04em]") +
       `</div>`
     );
   },

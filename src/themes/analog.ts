@@ -1,5 +1,6 @@
 import { sweepStyle, timeHtml } from "../anim";
 import { clockParts, formatDate, formatTime } from "../clock";
+import { indoorLine } from "../indoor";
 import { weatherLine } from "./minimal";
 import { esc, type Theme } from "./types";
 
@@ -32,6 +33,7 @@ export const analog: Theme = {
       `<div class="t-analog__time text-tv-72 font-extralight leading-none tabular-nums">${timeHtml(formatTime(now, config.timeZone), state.anim?.prevTime ?? null)}</div>` +
       `<div class="t-analog__date shimmer text-tv-36 text-fg-dim">${esc(formatDate(now, config.timeZone))}</div>` +
       weatherLine(state, "small") +
+      indoorLine(state.indoor, "text-tv-30") +
       `</div>`
     );
   },

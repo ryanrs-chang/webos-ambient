@@ -32,6 +32,7 @@ import { type Daypart, type EffectKind, effectIntensity, startEffects } from "./
 import { startShimmer } from "./effects/shimmer";
 import { parseFreeze } from "./freeze";
 import { browserSocket, type Entities, startHa } from "./ha";
+import { type Indoor, indoorReadings } from "./indoor";
 import { type BridgeHost, startKeepAwake } from "./keepAwake";
 import { themeIndex, themes } from "./themes";
 import { describeWeather, type Forecast, fetchForecast } from "./weather";
@@ -91,6 +92,8 @@ prefs = { ...prefs, themeIndex: themeIndex(launch.theme, themes[prefs.themeIndex
 
 let forecast: Forecast | null = null;
 let stale = false;
+/** Latest Home Assistant indoor readings; drawn on the next render, not on every push (the display changes once a minute). */
+let indoor: Indoor | null = null;
 /** Where in the free range the block sits, as a fraction of each axis, so a theme of another size keeps its zone. */
 let anchorFrac: Offset | null = null;
 let zones: ZoneState = { bag: [], last: null };
@@ -268,6 +271,7 @@ function render(force = false): void {
     forecast: shownForecast(),
     stale,
     config,
+    indoor,
     anim: { prevTime: lastTime, enter },
   });
   lastTime = time;
@@ -408,9 +412,11 @@ if (isDevMode(location)) {
   });
 }
 
-/** Spike: only logs what Home Assistant reports (`[ha]`, visible with inspect:tv); nothing is rendered from it yet. */
-function logEntities(entities: Entities): void {
-  for (const [id, e] of Object.entries(entities)) console.log(`[ha] ${id} = ${e.state}`, e.attributes);
+function onHaEntities(entities: Entities): void {
+  const first = indoor === null;
+  indoor = indoorReadings(entities, config.haEntities);
+  // Show the first readings right away instead of waiting up to a minute.
+  if (first && indoor !== null) render();
 }
 
 tickMinute();
@@ -422,6 +428,6 @@ if (config.haBaseUrl && config.haToken && config.haEntities.length > 0) {
     token: config.haToken,
     entityIds: config.haEntities,
     connect: browserSocket,
-    onEntities: logEntities,
+    onEntities: onHaEntities,
   });
 }

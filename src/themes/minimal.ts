@@ -1,6 +1,7 @@
 import { timeHtml } from "../anim";
 import { formatDate, formatTime } from "../clock";
 import { ICON_CLASS, weatherIcon } from "../icons";
+import { indoorLine } from "../indoor";
 import { describeWeather } from "../weather";
 import { deg, esc, LOADING, type Theme, type ViewState, weatherClass } from "./types";
 
@@ -47,6 +48,7 @@ export const minimal: Theme = {
       `<div class="t-minimal__time text-tv-300 font-extralight leading-none tracking-[0.02em] tabular-nums">${timeHtml(formatTime(now, config.timeZone), state.anim?.prevTime ?? null)}</div>` +
       `<div class="t-minimal__date shimmer text-tv-56 text-fg-dim">${esc(formatDate(now, config.timeZone))}</div>` +
       weatherLine(state) +
+      indoorLine(state.indoor, "text-tv-32") +
       `</div>`
     );
   },

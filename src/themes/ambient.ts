@@ -1,5 +1,6 @@
 import { timeHtml } from "../anim";
 import { formatDate, formatTime } from "../clock";
+import { indoorLine } from "../indoor";
 import { describeWeather } from "../weather";
 import { deg, esc, LOADING, type Theme, type ViewState, weatherClass } from "./types";
 
@@ -46,6 +47,7 @@ export const ambient: Theme = {
       `<div class="t-ambient__date shimmer text-tv-52 text-fg-dim">${esc(formatDate(now, config.timeZone))}</div>` +
       placeLine(state) +
       sunLine(state) +
+      indoorLine(state.indoor, "text-tv-32") +
       `</div>`
     );
   },
