@@ -13,6 +13,7 @@ Packaged LG webOS TV web app (clock + weather, always on, OLED). Bun + TypeScrip
 - `bun run build` — `build:css` (Tailwind, `src/tailwind.css` → `app/style.css`, minified) then `build:js` (`scripts/build-js.ts`: `src/main.ts` → `app/main.js`, with the validated user config inlined as `__USER_CONFIG__`). Both outputs are generated and gitignored; `package` runs `build` first.
 - `bun run dev` — build, then serve `app/` on :5173 and run the Tailwind watcher (`scripts/dev.ts`); `/fixture.json` is `test/fixtures/forecast.json`. `app/main.js` is built once: re-run `build:js` after editing a `.ts` file.
 - `bun run package` / `install:tv` / `launch:tv` — see README
+- `bun run font` — regenerate `app/fonts/ambient-sans.woff2` (`scripts/build-font.ts`: Noto Sans TC, pinned commit + sha256, subset with `uvx pyftsubset` to `fontCharset` = ASCII + Big5 symbols + Big5 level-1 hanzi + every non-ASCII character in `src/`), plus `app/fonts/OFL.txt` and `assets/fonts/charset.txt`; committed, not part of `build`. `test/font.test.ts` fails when a string in `src/` uses a character the committed font lacks: rerun it.
 - `bun run icons` — regenerate `app/icon.png`, `app/largeIcon.png` from `assets/icon.svg` (needs `rsvg-convert`)
 
 ## Architecture
@@ -24,7 +25,8 @@ Packaged LG webOS TV web app (clock + weather, always on, OLED). Bun + TypeScrip
 3. Render: `render()` builds a `ViewState` (`src/themes/types.ts`) and replaces `#content.innerHTML` with `themes[i].render(state)` — on start, every minute boundary (`tickMinute`), forecast change and theme switch. Because the DOM is rebuilt, continuity is restored after each render: `syncLoops` re-phases infinite CSS animations, the digit roll is driven by diffing against the previous time (`src/anim.ts`), then `syncBackdrop`/`syncEffects` update the layers below.
 4. Motion: `relocate()` every minute moves `#stage` (burn-in, below; `placeStage()` only positions it after a render); `startEffects`/`startMeteors`/`startShimmer` run independently of renders.
 5. Screen saver: `startKeepAwake` (`src/keepAwake.ts`) subscribes to tvpower's `registerScreenSaverRequest` and answers every request with `responseScreenSaverRequest` `ack: false`, so the TV's idle screen saver / Always Ready does not start, for at most `MAX_VETO_MS` (1 h) after start or the last remote key / `webOSRelaunch` (`poke()`), after which it answers `ack: true` so a TV left on still sleeps; it logs `[keepAwake]` to the console and is a no-op without a service bridge. `appinfo.json` deliberately has no `requiredACG` (adding it turns ACG enforcement on for webOS 26, and no listed group covers tvpower).
-6. Input: remote keys (`keydown`, webOS keyCodes) and the `webOSRelaunch` event go through `applyKey` → `commit()`; the dev panel (`src/devpanel.ts`, localhost only) calls the same path.
+6. Home Assistant (spike): when `haBaseUrl`, `haToken` and `haEntities` are set, `startHa` (`src/ha.ts`: pure WebSocket protocol `handleHaMessage`/`applyEntityEvent`, wiring with an injected socket factory and timers) subscribes to those entities and, for now, only logs `[ha]` states; nothing renders from it yet. The token is never logged.
+7. Input: remote keys (`keydown`, webOS keyCodes) and the `webOSRelaunch` event go through `applyKey` → `commit()`; the dev panel (`src/devpanel.ts`, localhost only) calls the same path.
 
 DOM layers, back to front (`app/index.html`): `#backdrop` (ambient tint) → `canvas#effects` (weather particles, or the cinematic scene while that theme is active, never both) → `#meteors` → `#stage > #fade > #content` (the moving theme content) → `#hint`.
 
@@ -34,11 +36,11 @@ Packaged apps load from `file://`:
 
 - The bundle is a classic IIFE script (`--format iife`), not an ES module; `index.html` uses a plain `<script src>`.
 - Config is bundled (`src/config.ts`, personal values injected by `scripts/build-js.ts`); never fetch a local file at runtime.
-- Only the forecast API is fetched over the network.
+- Only the forecast API is fetched over the network, plus the optional Home Assistant WebSocket (`src/ha.ts`).
 
 ## Personal values
 
-The repo is public. Personal values (place, latitude, longitude, time zone, later the Home Assistant URL) come only from `config.local.json` (gitignored, written by `bun run setup`), never from committed source, tests, fixtures or docs. `config.example.json` holds neutral placeholders; `src/config.ts` holds only non-sensitive tuning. Tests use `test/testConfig.ts` and never read `config.local.json`. A new user-settable key goes in `config.example.json`, `src/userConfig.ts` (`parseUserConfig`, with a test) and `scripts/setupArgs.ts`. `test/leakGuard.test.ts` fails if a value from `config.local.json` shows up in a committable file; do not weaken it.
+The repo is public. Personal values (place, latitude, longitude, time zone, the Home Assistant URL and token) come only from `config.local.json` (gitignored, written by `bun run setup`), never from committed source, tests, fixtures or docs. `config.example.json` holds neutral placeholders; `src/config.ts` holds only non-sensitive tuning. Tests use `test/testConfig.ts` and never read `config.local.json`. A new user-settable key goes in `config.example.json`, `src/userConfig.ts` (`parseUserConfig`, with a test) and `scripts/setupArgs.ts`. `test/leakGuard.test.ts` fails if a value from `config.local.json` shows up in a committable file; do not weaken it.
 
 ## OLED rules
 
@@ -55,7 +57,7 @@ Fancy effects (Magic UI-inspired, pure CSS keyframes on transform/opacity; blur 
 
 ## Layout
 
-- Pure logic with tests: `src/controls.ts`, `src/clock.ts`, `src/burnin.ts` (stage position, zones, relocation timing), `src/keepAwake.ts` (tvpower payloads and reply decision; the bridge wiring takes an injected host), `src/config.ts`, `src/weather.ts`, `src/anim.ts` (digit roll helpers; `syncLoops` is DOM), `src/effects/particles.ts` (core half), `src/effects/cinematic.ts` (core half: scene, step, caps, schedulers, `effectPlan`), `src/effects/meteors.ts` and `src/effects/shimmer.ts` (scheduling and geometry; their `start*` functions are DOM), `src/themes/*`.
+- Pure logic with tests: `src/controls.ts`, `src/ha.ts` (protocol; `startHa` takes an injected socket), `src/clock.ts`, `src/burnin.ts` (stage position, zones, relocation timing), `src/keepAwake.ts` (tvpower payloads and reply decision; the bridge wiring takes an injected host), `src/config.ts`, `src/weather.ts`, `src/anim.ts` (digit roll helpers; `syncLoops` is DOM), `src/effects/particles.ts` (core half), `src/effects/cinematic.ts` (core half: scene, step, caps, schedulers, `effectPlan`), `src/effects/meteors.ts` and `src/effects/shimmer.ts` (scheduling and geometry; their `start*` functions are DOM), `src/themes/*`.
 - DOM wiring only, untested: `src/main.ts`. Put anything testable in a pure module.
 - `demos/` is reference material (standalone weather-scene demos, see `demos/weather/README.md`): excluded from biome (`biome.json`) and from the build, never imported by `src/`. 電影感 was ported from `demos/weather/v1-cinematic.html`.
 - Each theme's class names are defined in `src/themes/*`; every utility they use must exist in the built stylesheet (`test/utilities.test.ts`) and every hook class that needs CSS must be styled in `src/styles/`.
@@ -63,7 +65,7 @@ Fancy effects (Magic UI-inspired, pure CSS keyframes on transform/opacity; blur 
 
 ## Styling (Tailwind CSS v4)
 
-`app/style.css` is generated; never edit it. Source: `src/tailwind.css` (entry, layer order `theme < base < components < utilities`, no preflight), `src/styles/theme.css` (`@theme` tokens: `text-fg`, `text-fg-dim`, `text-fg-faint`, `border-line`, `bg-accent`, `font-sans`, `text-tv-30`..`text-tv-300`, `--spacing: 4px`), `base.css`, and the hand-written CSS in `stage.css`, `components.css`, `motion.css`, `dev.css` (all in the `components` layer, so a utility always overrides them).
+`app/style.css` is generated; never edit it. Source: `src/tailwind.css` (entry, layer order `theme < base < components < utilities`, no preflight), `src/styles/theme.css` (`@theme` tokens: `text-fg`, `text-fg-dim`, `text-fg-faint`, `border-line`, `bg-accent`, `font-sans` ("Ambient Sans" first, the bundled font declared in `base.css`, so the TV and a desktop draw the same glyphs; never load a font from the network), `text-tv-30`..`text-tv-300`, `--spacing: 4px`), `base.css`, and the hand-written CSS in `stage.css`, `components.css`, `motion.css`, `dev.css` (all in the `components` layer, so a utility always overrides them).
 
 - Static layout, type size and colour go in the markup as utilities (themes, `app/index.html`, dev panel). Keep the BEM class on the element as a hook.
 - Keep as hand-written CSS: burn-in/placement (`#stage`, `#fade`, `#backdrop`, `#effects`: JS sets their transform/opacity), the digit roll, colon, icon animations, theme-switch and forecast-entrance animations, the analog hand sweep, pseudo-elements (`.t-forecast__pop::after`, `.digit--changed::before`), the forecast grid areas, and the reduced-motion block.

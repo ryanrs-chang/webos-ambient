@@ -37,20 +37,28 @@ The dev panel on localhost: theme buttons, a weather override, force motion, the
 
 Where the TV is (place name, coordinates, time zone) is personal, so it is never in the source. It lives in `config.local.json`, which is gitignored.
 
-1. `bun run setup` asks for each value (Enter keeps the one in brackets) and writes `config.local.json`. Or script it: `bun run setup --place Greenwich --lat 51.48 --lon 0.01 --tz Europe/London` (flags: `--place`, `--lat`, `--lon`, `--tz`, `--ha-base-url`; keys you leave out keep their current value). You can also `cp config.example.json config.local.json` and edit it.
+1. `bun run setup` asks for each value (Enter keeps the one in brackets) and writes `config.local.json`. Or script it: `bun run setup --place Greenwich --lat 51.48 --lon 0.01 --tz Europe/London` (flags: `--place`, `--lat`, `--lon`, `--tz`, `--ha-base-url`, `--ha-token`, `--ha-entities a.b,c.d`; keys you leave out keep their current value). You can also `cp config.example.json config.local.json` and edit it.
 2. `bun run build` inlines it into `app/main.js` (`scripts/build-js.ts` defines `__USER_CONFIG__`; `src/config.ts` reads it). The packaged app never reads a file at runtime. Without `config.local.json` the build warns and uses `config.example.json`; a config that fails validation (latitude outside -90..90, longitude outside -180..180, empty place, unknown IANA time zone) fails the build and names the bad keys.
 
-| Key         | Meaning                                                               |
-| ----------- | --------------------------------------------------------------------- |
-| `place`     | Name shown beside the weather                                         |
-| `latitude`  | -90 to 90                                                             |
-| `longitude` | -180 to 180                                                           |
-| `timeZone`  | IANA zone, e.g. `Europe/London`                                       |
-| `haBaseUrl` | Optional, empty by default; reserved for a future Home Assistant link |
+| Key          | Meaning                                                                                |
+| ------------ | -------------------------------------------------------------------------------------- |
+| `place`      | Name shown beside the weather                                                          |
+| `latitude`   | -90 to 90                                                                              |
+| `longitude`  | -180 to 180                                                                            |
+| `timeZone`   | IANA zone, e.g. `Europe/London`                                                        |
+| `haBaseUrl`  | Optional Home Assistant URL, e.g. `http://ha.example:8123`                             |
+| `haToken`    | Optional Home Assistant long-lived access token (a secret; inlined into `app/main.js`) |
+| `haEntities` | Optional list of entity ids to subscribe to, e.g. `["sensor.indoor_co2"]`              |
+
+Home Assistant (spike): with all three `ha*` keys set, `src/ha.ts` connects to HA's WebSocket API, authenticates, subscribes to `haEntities` (`subscribe_entities`) and reconnects with backoff (5 s doubling to 5 min; a rejected token stops it). For now it only logs `[ha] <entity> = <state>` to the console (see it with `inspect:tv`); nothing is drawn from it yet.
 
 Gitignored and so never published: `config.local.json`, and the build output `app/main.js` (which contains your values) and `app/style.css`. Committed: `config.example.json` (neutral placeholder values) and everything else, including tuning such as `refreshMinutes` and the burn-in settings, which stay in `src/config.ts`.
 
-Leak guard: `bun run check:secrets` (also part of `bun test`) fails if your latitude, longitude or place appears in any file that is, or would be, committed (`git ls-files --cached --others --exclude-standard`). It prints the file, line and key, never the value. It skips itself when there is no `config.local.json`, and ignores whole-number coordinates (too common to match) and values equal to the example's. Run it before the first push. It does not cover the other identity values (the app id and vendor in `app/appinfo.json`, `dev.ryanrs.ambient` in `package.json` and this README).
+Leak guard: `bun run check:secrets` (also part of `bun test`) fails if your latitude, longitude, place, Home Assistant URL or token appears in any file that is, or would be, committed (`git ls-files --cached --others --exclude-standard`). It prints the file, line and key, never the value. It skips itself when there is no `config.local.json`, and ignores whole-number coordinates (too common to match) and values equal to the example's. Run it before the first push. It does not cover the other identity values (the app id and vendor in `app/appinfo.json`, `dev.ryanrs.ambient` in `package.json` and this README).
+
+## Font
+
+The app bundles its font, so the TV and a desktop browser look the same: `app/fonts/ambient-sans.woff2`, a subset of [Noto Sans TC](https://github.com/google/fonts/tree/main/ofl/notosanstc) (SIL OFL, licence in `app/fonts/OFL.txt`) with the full weight axis, about 1.6 MB. It keeps ASCII, Big5's symbols and its 5401 common hanzi (so free text such as the Home Assistant briefing is covered) and every character `src/` uses. `bun run font` rebuilds it (needs [uv](https://docs.astral.sh/uv/)); the result is committed. A character outside the subset falls back to the TV's own font.
 
 ## Themes and remote keys
 
