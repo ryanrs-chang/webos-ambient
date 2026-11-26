@@ -1,0 +1,30 @@
+# Same checks as "Before calling a change done" in CLAUDE.md. No config.local.json here, so the build uses
+# config.example.json and the leak guard's repository test skips itself.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      - run: bunx biome check .
+      - run: bunx tsc --noEmit -p .
+      - run: bun run build
