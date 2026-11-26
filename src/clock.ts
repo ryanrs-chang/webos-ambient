@@ -41,9 +41,7 @@ export function formatHour(date: Date, timeZone: string): string {
 export function formatDate(date: Date, timeZone: string): string {
   // ICU versions disagree on a space before the weekday ("11月24日 星期二" on Linux, none on macOS), so drop
   // whitespace: the date then reads the same on the TV, a desktop and CI.
-  return fmt(timeZone, { month: "long", day: "numeric", weekday: "long" })
-    .format(date)
-    .replace(/\s+/g, "");
+  return fmt(timeZone, { month: "long", day: "numeric", weekday: "long" }).format(date).replace(/\s+/g, "");
 }
 
 /** Milliseconds until the next minute boundary, so the display flips on :00. */
