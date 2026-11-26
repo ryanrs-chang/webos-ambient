@@ -1,8 +1,8 @@
-// Leak guard: personal values (place, coordinates) live only in config.local.json, which is gitignored. This finds
+// Leak guard: personal values (place, coordinates, Home Assistant URL and token) live only in config.local.json, which is gitignored. This finds
 // them in any file that is, or would be, committed. A finding names the file, line and key, never the value.
 
 export interface Secret {
-  key: "latitude" | "longitude" | "place";
+  key: "latitude" | "longitude" | "place" | "haBaseUrl" | "haToken";
   value: string | number;
 }
 
@@ -21,7 +21,12 @@ interface ConfigLike {
   place: string;
   latitude: number;
   longitude: number;
+  haBaseUrl?: string;
+  haToken?: string;
 }
+
+/** Text secrets match as substrings; these keys are compared that way. */
+const TEXT_KEYS = ["place", "haBaseUrl", "haToken"] as const;
 
 /**
  * What must not leak: the local values that differ from the example's (the example is committed on purpose).
@@ -32,7 +37,10 @@ export function secretsFromConfig(local: ConfigLike, example: ConfigLike): Secre
   for (const key of ["latitude", "longitude"] as const) {
     if (local[key] !== example[key] && !Number.isInteger(local[key])) out.push({ key, value: local[key] });
   }
-  if (local.place !== example.place && local.place !== "") out.push({ key: "place", value: local.place });
+  for (const key of TEXT_KEYS) {
+    const value = local[key] ?? "";
+    if (value !== (example[key] ?? "") && value !== "") out.push({ key, value });
+  }
   return out;
 }
 
@@ -41,7 +49,7 @@ function escapeRegExp(s: string): string {
 }
 
 function matcher(secret: Secret): RegExp {
-  if (secret.key === "place") return new RegExp(escapeRegExp(String(secret.value)));
+  if (typeof secret.value === "string") return new RegExp(escapeRegExp(String(secret.value)));
   // A number only counts as itself: not inside a longer number, though trailing zeros are the same number.
   return new RegExp(`(?<!\\d)${escapeRegExp(String(Math.abs(secret.value as number)))}0*(?!\\d)`);
 }

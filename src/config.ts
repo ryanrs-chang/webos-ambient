@@ -31,6 +31,10 @@ export interface Config {
   relocateOffsetSec: number;
   /** Length of each half (out, then in) of the relocation fade. */
   relocateFadeMs: number;
+  /** Home Assistant link (src/ha.ts); off unless the URL, the token and at least one entity are set. */
+  haBaseUrl: string;
+  haToken: string;
+  haEntities: string[];
 }
 
 export const defaultConfig: Config = {
@@ -45,6 +49,9 @@ export const defaultConfig: Config = {
   relocateMinutes: 1,
   relocateOffsetSec: 30,
   relocateFadeMs: 1200,
+  haBaseUrl: user.haBaseUrl,
+  haToken: user.haToken,
+  haEntities: user.haEntities,
 };
 
 /** Overrides read from the launch parameters or the page's query string. */

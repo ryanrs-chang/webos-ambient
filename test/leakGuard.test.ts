@@ -22,6 +22,27 @@ describe("secretsFromConfig", () => {
   });
 });
 
+describe("secretsFromConfig: Home Assistant", () => {
+  test("lists a set token and base url", () => {
+    const keys = secretsFromConfig({ ...local, haBaseUrl: "http://10.9.8.7:8123", haToken: "tok.abc" }, example).map(
+      (s) => s.key,
+    );
+    expect(keys).toEqual(["latitude", "longitude", "place", "haBaseUrl", "haToken"]);
+  });
+
+  test("skips them when empty or equal to the example's", () => {
+    const keys = secretsFromConfig({ ...local, haBaseUrl: "", haToken: "" }, { ...example, haToken: "" });
+    expect(keys.map((s) => s.key)).toEqual(["latitude", "longitude", "place"]);
+  });
+
+  test("finds a token as a substring, without its value in the finding", () => {
+    const secrets = secretsFromConfig({ ...local, haToken: "eyJ.tok-1" }, example);
+    const found = findLeaks([{ path: "x.ts", content: 'const t = "eyJ.tok-1";' }], secrets);
+    expect(found).toEqual([{ path: "x.ts", line: 1, key: "haToken" }]);
+    expect(JSON.stringify(found)).not.toContain("eyJ.tok-1");
+  });
+});
+
 describe("findLeaks", () => {
   const secrets = secretsFromConfig(local, example);
 

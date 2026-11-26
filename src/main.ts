@@ -31,6 +31,7 @@ import { startMeteors } from "./effects/meteors";
 import { type Daypart, type EffectKind, effectIntensity, startEffects } from "./effects/particles";
 import { startShimmer } from "./effects/shimmer";
 import { parseFreeze } from "./freeze";
+import { browserSocket, type Entities, startHa } from "./ha";
 import { type BridgeHost, startKeepAwake } from "./keepAwake";
 import { themeIndex, themes } from "./themes";
 import { describeWeather, type Forecast, fetchForecast } from "./weather";
@@ -407,6 +408,20 @@ if (isDevMode(location)) {
   });
 }
 
+/** Spike: only logs what Home Assistant reports (`[ha]`, visible with inspect:tv); nothing is rendered from it yet. */
+function logEntities(entities: Entities): void {
+  for (const [id, e] of Object.entries(entities)) console.log(`[ha] ${id} = ${e.state}`, e.attributes);
+}
+
 tickMinute();
 scheduleRelocation();
 void refreshForecast();
+if (config.haBaseUrl && config.haToken && config.haEntities.length > 0) {
+  startHa({
+    baseUrl: config.haBaseUrl,
+    token: config.haToken,
+    entityIds: config.haEntities,
+    connect: browserSocket,
+    onEntities: logEntities,
+  });
+}
